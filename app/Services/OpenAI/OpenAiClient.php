@@ -10,8 +10,17 @@ class OpenAiClient
 {
     private const string RESPONSES_ENDPOINT = 'https://api.openai.com/v1/responses';
 
-    public function createResponse(string $instructions, string $input, ?string $apiKey = null): OpenAiResponseResult
-    {
+    private const string STRUCTURED_OUTPUT_NAME = 'generated_content';
+
+    /**
+     * @param  array<string, mixed>|null  $outputSchema
+     */
+    public function createResponse(
+        string $instructions,
+        string $input,
+        ?string $apiKey = null,
+        ?array $outputSchema = null,
+    ): OpenAiResponseResult {
         if (trim($instructions) === '' || trim($input) === '') {
             throw new InvalidArgumentException('Instructions and input must not be empty.');
         }
@@ -29,18 +38,31 @@ class OpenAiClient
             throw new OpenAiException('The OpenAI model and a positive timeout must be configured.');
         }
 
+        $requestData = [
+            'model' => $model,
+            'instructions' => $instructions,
+            'input' => $input,
+            'store' => false,
+            'stream' => false,
+        ];
+
+        if ($outputSchema !== null) {
+            $requestData['text'] = [
+                'format' => [
+                    'type' => 'json_schema',
+                    'name' => self::STRUCTURED_OUTPUT_NAME,
+                    'strict' => true,
+                    'schema' => $outputSchema,
+                ],
+            ];
+        }
+
         try {
             $response = Http::acceptJson()
                 ->withToken($apiKey)
                 ->timeout($timeout)
                 ->connectTimeout(min($timeout, 10))
-                ->post(self::RESPONSES_ENDPOINT, [
-                    'model' => $model,
-                    'instructions' => $instructions,
-                    'input' => $input,
-                    'store' => false,
-                    'stream' => false,
-                ]);
+                ->post(self::RESPONSES_ENDPOINT, $requestData);
         } catch (ConnectionException $exception) {
             throw new OpenAiException('The OpenAI request failed due to a network error.', previous: $exception);
         }
@@ -116,7 +138,15 @@ class OpenAiClient
             }
 
             foreach ($content as $block) {
-                if (! is_array($block) || ($block['type'] ?? null) !== 'output_text') {
+                if (! is_array($block)) {
+                    continue;
+                }
+
+                if (($block['type'] ?? null) === 'refusal') {
+                    throw new OpenAiException('The OpenAI response was refused.');
+                }
+
+                if (($block['type'] ?? null) !== 'output_text') {
                     continue;
                 }
 

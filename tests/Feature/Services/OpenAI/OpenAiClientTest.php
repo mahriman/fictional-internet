@@ -58,7 +58,8 @@ test('a non-streaming response request uses the configured model and server auth
             && $request['instructions'] === 'Follow these instructions.'
             && $request['input'] === 'Use this input.'
             && $request['store'] === false
-            && $request['stream'] === false;
+            && $request['stream'] === false
+            && ! isset($request['text']);
     });
 
     expect($result)->toBeInstanceOf(OpenAiResponseResult::class)
@@ -178,6 +179,26 @@ test('incomplete responses are rejected', function () {
 
     expect(fn () => app(OpenAiClient::class)->createResponse('Instructions.', 'Input.'))
         ->toThrow(OpenAiException::class, 'The OpenAI response was incomplete.');
+});
+
+test('provider refusals are rejected without exposing refusal text', function () {
+    Http::fake([
+        'https://api.openai.com/v1/responses' => Http::response([
+            'id' => 'resp_refusal',
+            'status' => 'completed',
+            'model' => 'actual-test-model',
+            'output' => [[
+                'type' => 'message',
+                'content' => [[
+                    'type' => 'refusal',
+                    'refusal' => 'sensitive refusal detail',
+                ]],
+            ]],
+        ]),
+    ]);
+
+    expect(fn () => app(OpenAiClient::class)->createResponse('Instructions.', 'Input.'))
+        ->toThrow(OpenAiException::class, 'The OpenAI response was refused.');
 });
 
 test('empty output text is rejected', function (string $text) {
