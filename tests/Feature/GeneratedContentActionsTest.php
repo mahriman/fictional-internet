@@ -61,6 +61,7 @@ test('the first appended version is numbered one and persists structured content
     expect($version)->toBeInstanceOf(GeneratedContentVersion::class)
         ->and($version->generated_content_id)->toBe($generatedContent->id)
         ->and($version->version_number)->toBe(1)
+        ->and($version->based_on_version_id)->toBeNull()
         ->and($version->origin)->toBe(GeneratedContentVersionOrigin::AiGenerated)
         ->and($version->fresh()->content)->toBe($content)
         ->and($version->fresh()->context_snapshot)->toBe($contextSnapshot)

@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\EditGeneratedContentVersion;
 use App\Enums\GeneratedContentVersionOrigin;
 use App\Models\GeneratedContent;
 use App\Models\GeneratedContentVersion;
@@ -65,6 +66,30 @@ test('existing versions cannot be updated or deleted individually', function () 
         ->toThrow(LogicException::class, 'Generated content versions are immutable.')
         ->and(fn () => $version->delete())
         ->toThrow(LogicException::class, 'Generated content versions cannot be deleted individually.');
+});
+
+test('deleting generated content removes its branched version history', function () {
+    $generatedContent = GeneratedContent::factory()->create();
+    $rootVersion = GeneratedContentVersion::factory()->for($generatedContent)->create();
+    $editVersion = app(EditGeneratedContentVersion::class);
+    $firstDescendant = $editVersion->handle($rootVersion, ['headline' => 'First branch']);
+    $secondDescendant = $editVersion->handle($rootVersion, ['headline' => 'Second branch']);
+    $secondGenerationDescendant = $editVersion->handle($firstDescendant, ['headline' => 'Nested branch']);
+    $versionIds = [
+        $rootVersion->id,
+        $firstDescendant->id,
+        $secondDescendant->id,
+        $secondGenerationDescendant->id,
+    ];
+
+    expect($rootVersion->descendantVersions)->toHaveCount(2)
+        ->and($firstDescendant->descendantVersions->sole()->is($secondGenerationDescendant))->toBeTrue();
+
+    $generatedContent->delete();
+
+    foreach ($versionIds as $versionId) {
+        $this->assertDatabaseMissing('generated_content_versions', ['id' => $versionId]);
+    }
 });
 
 test('deleting a user cascades through projects content and versions', function () {

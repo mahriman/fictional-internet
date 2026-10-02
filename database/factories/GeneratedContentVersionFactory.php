@@ -21,6 +21,7 @@ class GeneratedContentVersionFactory extends Factory
     {
         return [
             'generated_content_id' => GeneratedContent::factory(),
+            'based_on_version_id' => null,
             'version_number' => 1,
             'origin' => GeneratedContentVersionOrigin::AiGenerated,
             'content' => [
