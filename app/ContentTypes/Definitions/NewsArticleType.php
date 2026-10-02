@@ -22,6 +22,16 @@ class NewsArticleType implements ContentTypeDefinition
     }
 
     /**
+     * @param  array<string, mixed>  $content
+     */
+    public function titleFromContent(array $content): ?string
+    {
+        $headline = $content['headline'] ?? null;
+
+        return is_string($headline) ? $headline : null;
+    }
+
+    /**
      * @return array<string, mixed>
      */
     public function outputSchema(): array
