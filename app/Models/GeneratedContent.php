@@ -22,6 +22,6 @@ class GeneratedContent extends Model
 
     public function versions(): HasMany
     {
-        return $this->hasMany(GeneratedContentVersion::class);
+        return $this->hasMany(GeneratedContentVersion::class)->orderBy('version_number');
     }
 }
