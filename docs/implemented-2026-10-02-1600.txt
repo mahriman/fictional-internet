@@ -1,0 +1,39 @@
+Implemented
+
+Created 17 files:
+
+- Three migrations for `projects`, `generated_contents`, and `generated_content_versions`.
+- Three models and three factories.
+- `GeneratedContentVersionOrigin`, the `ContentTypeDefinition` contract, `ContentTypeRegistry`, and `NewsArticleType`.
+- Four Pest feature test files covering relationships, persistence, casts, version uniqueness and immutability, cascading deletion, and registry lookup/error cases.
+
+Modified `User.php` to add the projects relationship and `AppServiceProvider.php` to register the code-backed content type registry. No routes, controllers, UI, OpenAI integration, packages, or content-relationship tables were added.
+
+Database changes
+
+The migrations add:
+
+- Projects owned by users, with name and optional description.
+- Generated content belonging to a project, with a stable `content_type` key and optional title.
+- Structured version content, origin, context snapshot, generation metadata, and caller-supplied version number.
+
+Foreign keys cascade from users through projects and content to versions. Indexes support project/type lookup and enforce a unique version number per content record. No current-version pointer or automatic numbering was added.
+
+The feature tests used the configured in-memory SQLite database. I did not apply migrations to the configured application database.
+
+Architectural decisions
+
+- `NewsArticleType` provides the first stable key (`news_article`), prompt instructions, output schema, and Laravel validation rules.
+- `ContentTypeRegistry` resolves definitions by key and throws `InvalidArgumentException` for unknown or duplicate keys.
+- Versions reject ordinary Eloquent update and individual delete operations; parent deletion still cascades through the database.
+- No `ContentPresenter` or other presentation abstraction was added.
+- Version immutability is enforced through Eloquent model events. Direct query-builder updates or event-bypassing APIs could bypass those guards; the application does not add database triggers.
+
+Verification
+
+- Focused tests: 11 passed, 29 assertions. The runner reported 2 warnings but provided no warning details; no failures were reported.
+- Pint: passed. The `vendor/bin/pint` launcher lacked execute permission, so I ran the installed formatter through PHP. I ran it both with the required dirty-file options and over the implementation paths.
+- `git diff --check`: passed.
+- Reviewed the implementation files and final worktree status. Existing unrelated changes were left untouched.
+
+No implementation issues require attention for this milestone. Version creation and numbering remain future workflow decisions, as planned.
