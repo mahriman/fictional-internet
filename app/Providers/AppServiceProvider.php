@@ -4,6 +4,7 @@ namespace App\Providers;
 
 use App\ContentTypes\ContentTypeRegistry;
 use App\ContentTypes\Definitions\NewsArticleType;
+use App\Services\OpenAI\OpenAiClient;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -17,6 +18,8 @@ class AppServiceProvider extends ServiceProvider
             ContentTypeRegistry::class,
             fn (): ContentTypeRegistry => new ContentTypeRegistry(new NewsArticleType),
         );
+
+        $this->app->singleton(OpenAiClient::class);
     }
 
     /**
