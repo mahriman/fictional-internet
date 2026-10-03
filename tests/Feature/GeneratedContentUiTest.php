@@ -52,6 +52,11 @@ test('owners can open the form and content type options come from the registry',
             return null;
         }
 
+        public function editingView(): ?string
+        {
+            return null;
+        }
+
         public function promptInstructions(): string
         {
             return 'Write a fictional forum thread.';

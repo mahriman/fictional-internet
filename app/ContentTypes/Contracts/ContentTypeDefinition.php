@@ -10,6 +10,8 @@ interface ContentTypeDefinition
 
     public function presentationView(): ?string;
 
+    public function editingView(): ?string;
+
     public function promptInstructions(): string;
 
     /**

@@ -1,6 +1,6 @@
 @extends('layouts.app')
 
-@section('title', ($generatedContent->title ?: $contentTypeLabel).' · '.$project->name)
+@section('title', ($versionTitle ?: $contentTypeLabel).' · '.$project->name)
 
 @section('content')
     <section class="mx-auto max-w-4xl">
@@ -8,9 +8,23 @@
         <article class="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <header class="border-b border-slate-100 px-5 py-5 sm:px-8">
                 <p class="text-sm font-semibold uppercase tracking-[0.16em] text-indigo-700">{{ $contentTypeLabel }}</p>
-                <div class="mt-3 flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-500">
-                    <span>Version {{ $version->version_number }}</span>
-                    <time datetime="{{ $version->created_at->toIso8601String() }}">Generated {{ $version->created_at->format('M j, Y · g:i A') }}</time>
+                <div class="mt-3 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+                    <div class="flex flex-wrap gap-x-5 gap-y-2 text-sm text-slate-500">
+                        <span>Version {{ $version->version_number }}</span>
+                        <span>{{ $version->origin === \App\Enums\GeneratedContentVersionOrigin::AiGenerated ? 'AI-generated' : 'Manually edited' }}</span>
+                        <time datetime="{{ $version->created_at->toIso8601String() }}">Created {{ $version->created_at->format('M j, Y · g:i A') }}</time>
+                        @if ($version->basedOnVersion)
+                            <span>Based on version {{ $version->basedOnVersion->version_number }}</span>
+                        @endif
+                        @if ($isLatestVersion)
+                            <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">Latest version</span>
+                        @endif
+                    </div>
+                    @if ($editingView !== null)
+                        <a href="{{ route('projects.generated-content.versions.edit', [$project, $generatedContent, $version->version_number]) }}" class="inline-flex justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Edit this version</a>
+                    @else
+                        <p class="text-sm text-slate-500">A dedicated editor is unavailable for this content type.</p>
+                    @endif
                 </div>
             </header>
 
@@ -31,5 +45,34 @@
                 </details>
             @endif
         </article>
+
+        <section class="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8" aria-labelledby="version-history-heading">
+            <div class="border-b border-slate-100 pb-4">
+                <h2 id="version-history-heading" class="text-lg font-semibold text-slate-950">Version history</h2>
+                <p class="mt-1 text-sm text-slate-600">Each version is preserved. Edited versions identify the version they were based on.</p>
+            </div>
+            <ol class="mt-2 divide-y divide-slate-100">
+                @foreach ($versionHistory as $historyVersion)
+                    <li class="py-4 first:pt-4 last:pb-0">
+                        <a href="{{ route('projects.generated-content.versions.show', [$project, $generatedContent, $historyVersion->version_number]) }}" @if ($version->is($historyVersion)) aria-current="page" @endif class="flex flex-col gap-2 rounded-lg focus:outline-2 focus:outline-offset-4 focus:outline-indigo-700 sm:flex-row sm:items-center sm:justify-between">
+                            <span class="flex flex-wrap items-center gap-2">
+                                <span class="font-semibold text-slate-950">Version {{ $historyVersion->version_number }}</span>
+                                <span class="text-sm text-slate-600">{{ $historyVersion->origin === \App\Enums\GeneratedContentVersionOrigin::AiGenerated ? 'AI-generated' : 'Manually edited' }}</span>
+                                @if ($historyVersion->basedOnVersion)
+                                    <span class="text-sm text-slate-500">Based on version {{ $historyVersion->basedOnVersion->version_number }}</span>
+                                @endif
+                                @if ($historyVersion->version_number === $versionHistory->first()->version_number)
+                                    <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">Latest</span>
+                                @endif
+                                @if ($version->is($historyVersion))
+                                    <span class="text-sm font-medium text-indigo-700">Selected</span>
+                                @endif
+                            </span>
+                            <time class="text-sm text-slate-500" datetime="{{ $historyVersion->created_at->toIso8601String() }}">{{ $historyVersion->created_at->format('M j, Y · g:i A') }}</time>
+                        </a>
+                    </li>
+                @endforeach
+            </ol>
+        </section>
     </section>
 @endsection

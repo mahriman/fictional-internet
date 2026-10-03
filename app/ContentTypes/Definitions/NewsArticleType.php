@@ -21,6 +21,11 @@ class NewsArticleType implements ContentTypeDefinition
         return 'generated-content.types.news-article';
     }
 
+    public function editingView(): ?string
+    {
+        return 'generated-content.editors.news-article';
+    }
+
     public function promptInstructions(): string
     {
         return 'Write a fictional news article with a clear headline, publication, publication date, and article body.';

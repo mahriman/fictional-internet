@@ -30,4 +30,16 @@ Route::middleware('auth')->group(function () {
     Route::get('/projects/{project}/generated-content/{generatedContent}', [GeneratedContentController::class, 'show'])
         ->scopeBindings()
         ->name('projects.generated-content.show');
+    Route::get('/projects/{project}/generated-content/{generatedContent}/versions/{versionNumber}', [GeneratedContentController::class, 'showVersion'])
+        ->where('versionNumber', '[1-9][0-9]*')
+        ->scopeBindings()
+        ->name('projects.generated-content.versions.show');
+    Route::get('/projects/{project}/generated-content/{generatedContent}/versions/{versionNumber}/edit', [GeneratedContentController::class, 'editVersion'])
+        ->where('versionNumber', '[1-9][0-9]*')
+        ->scopeBindings()
+        ->name('projects.generated-content.versions.edit');
+    Route::post('/projects/{project}/generated-content/{generatedContent}/versions/{versionNumber}/edits', [GeneratedContentController::class, 'storeVersionEdit'])
+        ->where('versionNumber', '[1-9][0-9]*')
+        ->scopeBindings()
+        ->name('projects.generated-content.versions.edits.store');
 });

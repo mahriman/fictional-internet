@@ -44,7 +44,7 @@ test('registered news articles use the dedicated presentation and retain structu
         ->assertSee('whitespace-pre-wrap', false)
         ->assertSee('Back to '.$project->name)
         ->assertSee('Version 1')
-        ->assertSee('Generated '.$version->created_at->format('M j, Y · g:i A'))
+        ->assertSee('Created '.$version->created_at->format('M j, Y · g:i A'))
         ->assertSee('View structured data')
         ->assertSee('&quot;headline&quot;', false);
 
