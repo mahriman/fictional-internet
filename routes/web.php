@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\GeneratedContentController;
 use App\Http\Controllers\ProjectController;
 use Illuminate\Support\Facades\Route;
 
@@ -21,4 +22,12 @@ Route::middleware('guest')->group(function () {
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
     Route::resource('projects', ProjectController::class);
+
+    Route::get('/projects/{project}/generated-content/create', [GeneratedContentController::class, 'create'])
+        ->name('projects.generated-content.create');
+    Route::post('/projects/{project}/generated-content', [GeneratedContentController::class, 'store'])
+        ->name('projects.generated-content.store');
+    Route::get('/projects/{project}/generated-content/{generatedContent}', [GeneratedContentController::class, 'show'])
+        ->scopeBindings()
+        ->name('projects.generated-content.show');
 });

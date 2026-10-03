@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\ContentTypes\ContentTypeRegistry;
 use App\Http\Requests\StoreProjectRequest;
 use App\Http\Requests\UpdateProjectRequest;
 use App\Models\Project;
@@ -47,11 +48,20 @@ class ProjectController extends Controller
     /**
      * Display the specified resource.
      */
-    public function show(Project $project): View
+    public function show(Project $project, ContentTypeRegistry $contentTypes): View
     {
         Gate::authorize('view', $project);
 
-        return view('projects.show', ['project' => $project]);
+        $generatedContents = $project->generatedContents()
+            ->latest('created_at')
+            ->latest('id')
+            ->get();
+
+        return view('projects.show', [
+            'project' => $project,
+            'generatedContents' => $generatedContents,
+            'contentTypes' => $contentTypes->all(),
+        ]);
     }
 
     /**

@@ -8,12 +8,27 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Support\Str;
 
 #[Fillable(['project_id', 'content_type', 'title'])]
 class GeneratedContent extends Model
 {
     /** @use HasFactory<GeneratedContentFactory> */
     use HasFactory;
+
+    protected static function booted(): void
+    {
+        static::creating(static function (GeneratedContent $generatedContent): void {
+            if (blank($generatedContent->uuid)) {
+                $generatedContent->uuid = (string) Str::uuid();
+            }
+        });
+    }
+
+    public function getRouteKeyName(): string
+    {
+        return 'uuid';
+    }
 
     public function project(): BelongsTo
     {
