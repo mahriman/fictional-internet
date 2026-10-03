@@ -47,6 +47,11 @@ test('owners can open the form and content type options come from the registry',
             return 'Forum thread';
         }
 
+        public function presentationView(): ?string
+        {
+            return null;
+        }
+
         public function promptInstructions(): string
         {
             return 'Write a fictional forum thread.';
@@ -224,7 +229,7 @@ test('successful generation persists one first version and redirects to a uuid d
         ->assertOk()
         ->assertSee('News article')
         ->assertSee('Version 1')
-        ->assertSee('Generated content')
+        ->assertSee('The Harbor Ledger')
         ->assertSee('&lt;script&gt;alert(1)&lt;/script&gt;', false)
         ->assertDontSee('<script>alert(1)</script>', false);
 });

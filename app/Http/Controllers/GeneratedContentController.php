@@ -58,12 +58,17 @@ class GeneratedContentController extends Controller
 
         $version = $generatedContent->versions()->firstOrFail();
         $contentType = $contentTypes->all()[$generatedContent->content_type] ?? null;
+        $presentationView = $contentType?->presentationView();
 
         return view('generated-content.show', [
             'project' => $project,
             'generatedContent' => $generatedContent,
             'version' => $version,
+            'structuredContent' => is_array($version->content) ? $version->content : [],
             'contentTypeLabel' => $contentType?->label() ?? $generatedContent->content_type,
+            'presentationView' => $presentationView !== null && view()->exists($presentationView)
+                ? $presentationView
+                : null,
         ]);
     }
 }

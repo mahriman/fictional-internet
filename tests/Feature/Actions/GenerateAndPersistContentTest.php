@@ -128,6 +128,11 @@ test('a content type may omit its generated content title', function () {
             return 'Untitled content';
         }
 
+        public function presentationView(): ?string
+        {
+            return null;
+        }
+
         public function promptInstructions(): string
         {
             return 'Write untitled content.';

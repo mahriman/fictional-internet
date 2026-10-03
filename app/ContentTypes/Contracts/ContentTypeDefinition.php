@@ -8,6 +8,8 @@ interface ContentTypeDefinition
 
     public function label(): string;
 
+    public function presentationView(): ?string;
+
     public function promptInstructions(): string;
 
     /**
