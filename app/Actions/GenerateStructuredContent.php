@@ -3,9 +3,11 @@
 namespace App\Actions;
 
 use App\ContentTypes\ContentTypeRegistry;
+use App\ContentTypes\Contracts\GeneratedContentNormalizer;
 use App\Exceptions\StructuredContentGenerationException;
 use App\Services\OpenAI\OpenAiClient;
 use App\Services\OpenAI\OpenAiResponseResult;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Validator;
 use InvalidArgumentException;
 use JsonException;
@@ -88,6 +90,19 @@ class GenerateStructuredContent
         $validator = Validator::make(['content' => $content], $validationRules);
 
         $validationFailed = $validator->fails();
+        $normalizationDiagnostics = null;
+
+        if (! $validationFailed && $definition instanceof GeneratedContentNormalizer) {
+            $normalization = $definition->normalizeGeneratedContent($validator->validated()['content']);
+            $content = $normalization['content'];
+            $normalizationDiagnostics = [
+                'quotes_preserved' => $normalization['quotes_preserved'],
+                'quotes_normalized' => $normalization['quotes_normalized'],
+                'quotes_dropped' => $normalization['quotes_dropped'],
+            ];
+            $validator = Validator::make(['content' => $content], $validationRules);
+            $validationFailed = $validator->fails();
+        }
 
         $semanticErrors = [];
 
@@ -120,8 +135,16 @@ class GenerateStructuredContent
                     $validationFailed ? 'schema_validation' : 'semantic_validation',
                     $entryCollection,
                     $entryCount,
+                    $normalizationDiagnostics,
                 ),
             );
+        }
+
+        if ($normalizationDiagnostics !== null) {
+            Log::info('Generated discussion quote normalization completed.', [
+                'content_type' => $contentType,
+                ...$normalizationDiagnostics,
+            ]);
         }
 
         return new StructuredContentGenerationResult(
@@ -189,6 +212,7 @@ class GenerateStructuredContent
         string $stage,
         ?string $entryCollection = null,
         ?int $entryCount = null,
+        ?array $normalizationDiagnostics = null,
     ): array {
         return array_filter([
             'diagnostic_stage' => $stage,
@@ -199,6 +223,7 @@ class GenerateStructuredContent
             'reasoning_tokens' => $response->reasoningTokens,
             'entry_collection' => $entryCollection,
             'entry_count' => $entryCount,
+            ...($normalizationDiagnostics ?? []),
         ], static fn (mixed $value): bool => $value !== null);
     }
 }

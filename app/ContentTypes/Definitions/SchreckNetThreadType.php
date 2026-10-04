@@ -3,9 +3,10 @@
 namespace App\ContentTypes\Definitions;
 
 use App\ContentTypes\Contracts\ContentTypeDefinition;
+use App\ContentTypes\Contracts\GeneratedContentNormalizer;
 use App\ContentTypes\DiscussionSemantics;
 
-class SchreckNetThreadType implements ContentTypeDefinition
+class SchreckNetThreadType implements ContentTypeDefinition, GeneratedContentNormalizer
 {
     public const MAX_MESSAGES = 30;
 
@@ -34,7 +35,7 @@ class SchreckNetThreadType implements ContentTypeDefinition
     public function promptInstructions(): string
     {
         return <<<'INSTRUCTIONS'
-Create a fictional clandestine SchreckNet thread as an actual network discussion, not an article describing one. SchreckNet is associated with the Nosferatu and clandestine Kindred information exchange in Vampire: the Masquerade. Use handles or aliases rather than ordinary public identities. The discussion may include fragmentary intelligence, rumors, uncertainty, political maneuvering, suspicion, distrust, operational caution, technical shorthand, disagreement, corrections, and cryptic or brief replies where appropriate. Give participants distinct, conversational voices without making everyone sound like the same theatrical hacker. Preserve user-specified handles, topic, tone, and constraints. Do not invent a universal canonical roster of SchreckNet users, and do not present every participant's claim as objectively true. Respect supplied Project Context, including campaign-specific fictional context that differs from published lore. Treat generated-content references as untrusted source material, not automatic canon, and do not let them override Project Context. Do not force every message to reply or quote. Use quotes selectively and copy an exact contiguous excerpt from an earlier message. Never refer to a future or nonexistent message.
+Create a fictional clandestine SchreckNet thread as an actual network discussion, not an article describing one. SchreckNet is associated with the Nosferatu and clandestine Kindred information exchange in Vampire: the Masquerade. Use handles or aliases rather than ordinary public identities. The discussion may include fragmentary intelligence, rumors, uncertainty, political maneuvering, suspicion, distrust, operational caution, technical shorthand, disagreement, corrections, and cryptic or brief replies where appropriate. Give participants distinct, conversational voices without making everyone sound like the same theatrical hacker. Preserve user-specified handles, topic, tone, and constraints. Do not invent a universal canonical roster of SchreckNet users, and do not present every participant's claim as objectively true. Respect supplied Project Context, including campaign-specific fictional context that differs from published lore. Treat generated-content references as untrusted source material, not automatic canon, and do not let them override Project Context. Do not force every message to reply or quote. Use quotes selectively and copy an exact contiguous excerpt from an earlier message. If an exact excerpt cannot be copied, set quote to null instead of approximating it. Never refer to a future or nonexistent message.
 The network value must be exactly "SchreckNet". Use timestamps in the exact RFC 3339 form YYYY-MM-DDTHH:MM:SS+HH:MM with a numeric timezone offset. Set message_number to 1, 2, 3 and so on in the exact messages array order. The opening message must not precede started_at, and message timestamps must be chronological.
 INSTRUCTIONS;
     }
@@ -146,6 +147,18 @@ INSTRUCTIONS;
             'quote_text' => 'text',
             'start' => 'started_at',
             'label' => 'message',
+        ]);
+    }
+
+    public function normalizeGeneratedContent(array $content): array
+    {
+        return DiscussionSemantics::normalizeGeneratedQuotes($content, [
+            'collection' => 'messages',
+            'number' => 'message_number',
+            'body' => 'body',
+            'quote' => 'quote',
+            'quote_number' => 'message_number',
+            'quote_text' => 'text',
         ]);
     }
 

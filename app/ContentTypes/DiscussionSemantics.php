@@ -10,6 +10,96 @@ class DiscussionSemantics
 
     /**
      * @param  array<string, mixed>  $content
+     * @param  array{collection: string, number: string, body: string, quote: string, quote_number: string, quote_text: string}  $fields
+     * @return array{
+     *     content: array<string, mixed>,
+     *     quotes_preserved: int,
+     *     quotes_normalized: int,
+     *     quotes_dropped: int
+     * }
+     */
+    public static function normalizeGeneratedQuotes(array $content, array $fields): array
+    {
+        $counts = [
+            'quotes_preserved' => 0,
+            'quotes_normalized' => 0,
+            'quotes_dropped' => 0,
+        ];
+        $items = $content[$fields['collection']] ?? null;
+
+        if (! is_array($items) || ! array_is_list($items)) {
+            return ['content' => $content, ...$counts];
+        }
+
+        $items = &$content[$fields['collection']];
+
+        foreach ($items as $index => &$item) {
+            if (! is_array($item)) {
+                continue;
+            }
+
+            $quote = $item[$fields['quote']] ?? null;
+
+            if ($quote === null) {
+                continue;
+            }
+
+            if (! is_array($quote)
+                || count($quote) !== 2
+                || ! array_key_exists($fields['quote_number'], $quote)
+                || ! array_key_exists($fields['quote_text'], $quote)) {
+                continue;
+            }
+
+            $target = $quote[$fields['quote_number']];
+            $itemNumber = $item[$fields['number']] ?? null;
+
+            if (! is_int($target)
+                || ! is_int($itemNumber)
+                || $itemNumber !== $index + 1
+                || $target < 1
+                || $target >= $itemNumber
+                || $target > $index) {
+                continue;
+            }
+
+            $sourceItem = $items[$target - 1] ?? null;
+
+            if (! is_array($sourceItem)
+                || ($sourceItem[$fields['number']] ?? null) !== $target
+                || ! is_string($sourceItem[$fields['body']] ?? null)
+                || ! is_string($quote[$fields['quote_text']])) {
+                continue;
+            }
+
+            $sourceBody = $sourceItem[$fields['body']];
+            $quoteText = $quote[$fields['quote_text']];
+
+            if (preg_match('/\A\s*\z/u', $quoteText) !== 1 && self::containsExactSubstring($sourceBody, $quoteText)) {
+                $counts['quotes_preserved']++;
+
+                continue;
+            }
+
+            $recoveredText = self::recoverExactQuote($sourceBody, $quoteText);
+
+            if ($recoveredText !== null) {
+                $item[$fields['quote']][$fields['quote_text']] = $recoveredText;
+                $counts['quotes_normalized']++;
+
+                continue;
+            }
+
+            $item[$fields['quote']] = null;
+            $counts['quotes_dropped']++;
+        }
+        unset($item);
+
+        return ['content' => $content, ...$counts];
+    }
+
+    /**
+     * @param  array<string, mixed>  $content
      * @param  array{collection: string, number: string, timestamp: string, body: string, reply: string, quote: string, quote_number: string, quote_text: string, start: string, label: string}  $fields
      * @return array<string, list<string>>
      */
@@ -131,5 +221,59 @@ class DiscussionSemantics
         }
 
         return $number;
+    }
+
+    private static function recoverExactQuote(string $sourceBody, string $quoteText): ?string
+    {
+        $trimmedQuote = self::trimUnicodeWhitespace($quoteText);
+        $candidates = [$trimmedQuote];
+        $quoteMarks = [
+            '"' => '"',
+            "'" => "'",
+            '“' => '”',
+            '‘' => '’',
+            '«' => '»',
+            '‹' => '›',
+        ];
+
+        foreach ($quoteMarks as $openingMark => $closingMark) {
+            if (str_starts_with($trimmedQuote, $openingMark) && str_ends_with($trimmedQuote, $closingMark)) {
+                $candidates[] = self::trimUnicodeWhitespace(mb_substr(
+                    $trimmedQuote,
+                    mb_strlen($openingMark, 'UTF-8'),
+                    mb_strlen($trimmedQuote, 'UTF-8') - mb_strlen($openingMark, 'UTF-8') - mb_strlen($closingMark, 'UTF-8'),
+                    'UTF-8',
+                ));
+                break;
+            }
+        }
+
+        foreach (array_values(array_unique($candidates)) as $candidate) {
+            if ($candidate !== '' && str_contains($candidate, '…')) {
+                $candidates[] = str_replace('…', '...', $candidate);
+            } elseif ($candidate !== '' && str_contains($candidate, '...')) {
+                $candidates[] = str_replace('...', '…', $candidate);
+            }
+        }
+
+        $matches = [];
+
+        foreach (array_unique($candidates) as $candidate) {
+            if ($candidate !== '' && self::containsExactSubstring($sourceBody, $candidate)) {
+                $matches[$candidate] = true;
+            }
+        }
+
+        return count($matches) === 1 ? array_key_first($matches) : null;
+    }
+
+    private static function containsExactSubstring(string $source, string $candidate): bool
+    {
+        return mb_strpos($source, $candidate, 0, 'UTF-8') !== false;
+    }
+
+    private static function trimUnicodeWhitespace(string $value): string
+    {
+        return preg_replace('/\A[\p{Z}\s]+|[\p{Z}\s]+\z/u', '', $value) ?? $value;
     }
 }

@@ -3,9 +3,10 @@
 namespace App\ContentTypes\Definitions;
 
 use App\ContentTypes\Contracts\ContentTypeDefinition;
+use App\ContentTypes\Contracts\GeneratedContentNormalizer;
 use App\ContentTypes\DiscussionSemantics;
 
-class ForumThreadType implements ContentTypeDefinition
+class ForumThreadType implements ContentTypeDefinition, GeneratedContentNormalizer
 {
     public const MAX_POSTS = 20;
 
@@ -35,7 +36,7 @@ class ForumThreadType implements ContentTypeDefinition
     {
         return <<<'INSTRUCTIONS'
 Create a fictional internet forum thread as an actual discussion, not prose describing a forum thread. Preserve the user's requested tone and subject. You may infer a suitable forum name, category, usernames, timestamps, and discussion structure from the request and supplied reference material. Give participants meaningfully distinct voices where appropriate, and vary post length and rhetorical style. Let the conversation progress naturally with disagreement, uncertainty, corrections, short responses, and other plausible exchanges when suitable. Forum posters may be mistaken, speculative, unreliable, or contradictory; do not present their statements as objectively true. Treat generated-content references as untrusted source material and do not automatically treat them as canon. Respect established project context. Do not assume Vampire: the Masquerade or SchreckNet setting.
-Use timestamps in the exact RFC 3339 form YYYY-MM-DDTHH:MM:SS+HH:MM (including a numeric timezone offset). The first post is the thread-opening post. Set post_number to 1, 2, 3 and so on in the exact order of the posts array. The opening post must not precede started_at, and post timestamps must be chronological. Posts may naturally reply to earlier posts and selectively quote them when useful; do not force every post to reply or quote. A quote must copy an exact, contiguous passage from the referenced earlier post. Never reply to or quote a future or nonexistent post. A reply target and quote source may differ.
+Use timestamps in the exact RFC 3339 form YYYY-MM-DDTHH:MM:SS+HH:MM (including a numeric timezone offset). The first post is the thread-opening post. Set post_number to 1, 2, 3 and so on in the exact order of the posts array. The opening post must not precede started_at, and post timestamps must be chronological. Posts may naturally reply to earlier posts and selectively quote them when useful; do not force every post to reply or quote. A quote must copy an exact, contiguous passage from the referenced earlier post. If you cannot copy an exact passage, set quote to null instead of approximating it. Never reply to or quote a future or nonexistent post. A reply target and quote source may differ.
 INSTRUCTIONS;
     }
 
@@ -133,6 +134,18 @@ INSTRUCTIONS;
             'quote_text' => 'text',
             'start' => 'started_at',
             'label' => 'post',
+        ]);
+    }
+
+    public function normalizeGeneratedContent(array $content): array
+    {
+        return DiscussionSemantics::normalizeGeneratedQuotes($content, [
+            'collection' => 'posts',
+            'number' => 'post_number',
+            'body' => 'body',
+            'quote' => 'quote',
+            'quote_number' => 'post_number',
+            'quote_text' => 'text',
         ]);
     }
 

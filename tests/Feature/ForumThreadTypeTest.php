@@ -372,13 +372,11 @@ test('forum generation rejects invalid reply and quote references before persist
         'current quote' => $thread['posts'][1]['quote'] = ['post_number' => 2, 'text' => 'reflections'],
         'future quote' => $thread['posts'][1]['quote'] = ['post_number' => 3, 'text' => 'bright'],
         'nonexistent quote' => $thread['posts'][1]['quote'] = ['post_number' => 9, 'text' => 'bright'],
-        'paraphrased quote' => $thread['posts'][1]['quote'] = ['post_number' => 1, 'text' => 'I saw some lights'],
         'noninteger reply' => $thread['posts'][1]['reply_to_post_number'] = '1',
         'boolean reply' => $thread['posts'][1]['reply_to_post_number'] = true,
         'noninteger quote target' => $thread['posts'][1]['quote'] = ['post_number' => '1', 'text' => 'three lights'],
         'boolean quote target' => $thread['posts'][1]['quote'] = ['post_number' => true, 'text' => 'three lights'],
         'quote without text' => $thread['posts'][1]['quote'] = ['post_number' => 1],
-        'empty quote text' => $thread['posts'][1]['quote'] = ['post_number' => 1, 'text' => " \t"],
         'unexpected quote property' => $thread['posts'][1]['quote'] = ['post_number' => 1, 'text' => 'three lights', 'html' => '<b>forged</b>'],
     };
 
@@ -399,27 +397,26 @@ test('forum generation rejects invalid reply and quote references before persist
     'quote cannot target current post' => ['current quote'],
     'quote cannot target a future post' => ['future quote'],
     'quote cannot target a nonexistent post' => ['nonexistent quote'],
-    'paraphrased quote is rejected' => ['paraphrased quote'],
     'reply reference must be an integer' => ['noninteger reply'],
     'boolean reply reference is rejected' => ['boolean reply'],
     'quote reference must be an integer' => ['noninteger quote target'],
     'boolean quote reference is rejected' => ['boolean quote target'],
     'quote object must contain text' => ['quote without text'],
-    'quote text cannot be empty' => ['empty quote text'],
     'unexpected quote fields are rejected' => ['unexpected quote property'],
 ]);
 
-test('semantic quote failures expose only a safe category and field path for diagnostics', function () {
+test('invalid quote references expose only safe diagnostic metadata', function () {
     $thread = validForumThread();
-    $thread['posts'][1]['quote'] = ['post_number' => 1, 'text' => 'The lights were definitely red.'];
+    $thread['posts'][1]['quote'] = ['post_number' => 2, 'text' => 'reflections from the ferry'];
+    $privateQuote = $thread['posts'][1]['quote']['text'];
     Http::fake(['https://api.openai.com/v1/responses' => Http::response(fakeForumThreadResponse($thread))]);
 
     try {
-        app(GenerateStructuredContent::class)->handle('forum_thread', 'Write a thread with a quotation.', 'forum-test-key');
-        test()->fail('A paraphrased quotation should be rejected.');
+        app(GenerateStructuredContent::class)->handle('forum_thread', 'PRIVATE PROMPT', 'forum-test-key');
+        test()->fail('A quote to the current post should be rejected.');
     } catch (StructuredContentGenerationException $exception) {
         expect($exception->diagnosticCategory)->toBe('semantic_validation')
-            ->and($exception->fieldPaths)->toContain('content.posts.1.quote.text')
+            ->and($exception->fieldPaths)->toContain('content.posts.1.quote.post_number')
             ->and($exception->diagnosticCodes)->toBe(['semantic_validation_failed', 'discussion_quote_invalid'])
             ->and($exception->diagnosticContext)->toMatchArray([
                 'diagnostic_stage' => 'semantic_validation',
@@ -430,7 +427,8 @@ test('semantic quote failures expose only a safe category and field path for dia
                 'entry_count' => 2,
             ])
             ->and($exception->getMessage())->toBe('The generated content failed validation.')
-            ->and($exception->fieldPaths)->not->toContain($thread['posts'][1]['quote']['text']);
+            ->and($exception->fieldPaths)->not->toContain($privateQuote)
+            ->and(json_encode($exception->diagnosticContext))->not->toContain('PRIVATE');
     }
 });
 

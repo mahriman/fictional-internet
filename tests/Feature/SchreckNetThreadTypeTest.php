@@ -249,7 +249,6 @@ test('invalid SchreckNet structure is rejected before content or version persist
     'opening message quote' => [array_replace_recursive(validSchreckNetThread(), ['messages' => [['quote' => ['message_number' => 1, 'text' => 'not earlier']]]])],
     'nonexistent quote source' => [array_replace_recursive(validSchreckNetThread(), ['messages' => [[], [], ['quote' => ['message_number' => 8, 'text' => 'not earlier']]]])],
     'future quote' => [array_replace_recursive(validSchreckNetThread(), ['messages' => [[], [], ['quote' => ['message_number' => 3, 'text' => 'anything']]]])],
-    'paraphrased quote' => [array_replace_recursive(validSchreckNetThread(), ['messages' => [[], [], ['quote' => ['message_number' => 1, 'text' => 'a close paraphrase']]]])],
     'first message reply' => [array_replace_recursive(validSchreckNetThread(), ['messages' => [['reply_to_message_number' => 1]]])],
     'bad calendar date' => [array_replace(validSchreckNetThread(), ['started_at' => '2025-02-30T10:00:00+00:00'])],
     'bad timezone offset' => [array_replace(validSchreckNetThread(), ['started_at' => '2025-06-15T10:00:00+25:00'])],
