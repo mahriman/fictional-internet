@@ -118,25 +118,53 @@ class EditGeneratedContentRequest extends FormRequest
             ? Arr::only($submittedContent, $this->allowedContentFields)
             : [];
 
-        foreach ($this->nestedAllowedFields() as $field => $allowedFields) {
-            if (! is_array($safeContent[$field] ?? null)) {
+        $nestedAllowedFields = $this->nestedAllowedFields();
+        $nestedCollections = [];
+
+        foreach ($nestedAllowedFields as $path => $allowedFields) {
+            $segments = explode('.', $path);
+            $collection = $segments[0];
+
+            if (count($segments) !== 2 || $segments[1] !== '*') {
                 continue;
             }
 
-            $nestedItems = $safeContent[$field];
-            $expectedCount = $this->expectedNestedCount($field);
+            $nestedCollections[$collection] = $allowedFields;
+
+            if (! is_array($safeContent[$collection] ?? null)) {
+                continue;
+            }
+
+            $nestedItems = $safeContent[$collection];
+            $expectedCount = $this->expectedNestedCount($collection);
 
             if (! array_is_list($nestedItems)
                 || ($expectedCount !== null && count($nestedItems) !== $expectedCount)) {
-                unset($safeContent[$field]);
+                unset($safeContent[$collection]);
 
                 continue;
             }
 
-            $safeContent[$field] = array_map(
+            $safeContent[$collection] = array_map(
                 static fn (mixed $item): array => is_array($item) ? Arr::only($item, $allowedFields) : [],
                 $nestedItems,
             );
+        }
+
+        uksort($nestedAllowedFields, static fn (string $left, string $right): int => substr_count($left, '.') <=> substr_count($right, '.'));
+
+        foreach ($nestedAllowedFields as $path => $allowedFields) {
+            if (substr_count($path, '.') < 2) {
+                continue;
+            }
+
+            $collection = explode('.', $path)[0];
+
+            if (! isset($nestedCollections[$collection]) || ! isset($safeContent[$collection])) {
+                continue;
+            }
+
+            $this->filterNestedPath($safeContent, explode('.', $path), $allowedFields);
         }
 
         $response = $this->redirector->to($redirectUrl)
@@ -148,9 +176,7 @@ class EditGeneratedContentRequest extends FormRequest
             ->redirectTo($redirectUrl);
     }
 
-    /**
-     * @return array<string, array<int, string>>
-     */
+    /** @return array<string, list<string>> */
     private function nestedAllowedFields(): array
     {
         $allowedFields = [];
@@ -165,11 +191,54 @@ class EditGeneratedContentRequest extends FormRequest
                     continue;
                 }
 
-                $allowedFields[explode('.', $path, 2)[0]] = explode(',', substr($rule, 6));
+                $allowedFields[$path] = explode(',', substr($rule, 6));
             }
         }
 
         return $allowedFields;
+    }
+
+    /**
+     * @param  array<string, mixed>  $container
+     * @param  list<string>  $segments
+     * @param  list<string>  $allowedFields
+     */
+    private function filterNestedPath(array &$container, array $segments, array $allowedFields): void
+    {
+        $segment = array_shift($segments);
+
+        if ($segment === '*') {
+            if (! array_is_list($container)) {
+                return;
+            }
+
+            foreach ($container as &$item) {
+                if ($segments === []) {
+                    $item = is_array($item) ? Arr::only($item, $allowedFields) : [];
+                } elseif (is_array($item)) {
+                    $this->filterNestedPath($item, $segments, $allowedFields);
+                }
+            }
+            unset($item);
+
+            return;
+        }
+
+        if (! is_string($segment) || ! array_key_exists($segment, $container)) {
+            return;
+        }
+
+        if ($segments === []) {
+            if (is_array($container[$segment])) {
+                $container[$segment] = Arr::only($container[$segment], $allowedFields);
+            }
+
+            return;
+        }
+
+        if (is_array($container[$segment])) {
+            $this->filterNestedPath($container[$segment], $segments, $allowedFields);
+        }
     }
 
     private function expectedNestedCount(string $field): ?int

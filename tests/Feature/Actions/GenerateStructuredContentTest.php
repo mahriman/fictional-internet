@@ -138,8 +138,15 @@ test('malformed generated json is rejected without exposing the response text', 
         ]),
     ]);
 
-    expect(fn () => app(GenerateStructuredContent::class)->handle('news_article', 'PRIVATE PROMPT'))
-        ->toThrow(StructuredContentGenerationException::class, 'The generated response was not valid JSON.');
+    try {
+        app(GenerateStructuredContent::class)->handle('news_article', 'PRIVATE PROMPT');
+        test()->fail('Malformed JSON should be rejected.');
+    } catch (StructuredContentGenerationException $exception) {
+        expect($exception->getMessage())->toBe('The generated response was not valid JSON.')
+            ->and($exception->diagnosticCategory)->toBe('json_decode')
+            ->and($exception->fieldPaths)->toBe([])
+            ->and($exception->getMessage())->not->toContain($malformedJson);
+    }
 });
 
 test('generated json must have an object root', function (string $json) {

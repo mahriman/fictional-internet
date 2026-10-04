@@ -29,7 +29,10 @@ class GenerateStructuredContent
         $properties = $schema['properties'] ?? null;
 
         if (($schema['type'] ?? null) !== 'object' || ! is_array($properties) || $properties === []) {
-            throw new StructuredContentGenerationException('The registered content type has an invalid output schema.');
+            throw new StructuredContentGenerationException(
+                'The registered content type has an invalid output schema.',
+                diagnosticCategory: 'schema_definition',
+            );
         }
 
         $response = $this->openAiClient->createResponse(
@@ -42,17 +45,27 @@ class GenerateStructuredContent
         try {
             $decodedObject = json_decode($response->text, flags: JSON_THROW_ON_ERROR);
         } catch (JsonException $exception) {
-            throw new StructuredContentGenerationException('The generated response was not valid JSON.', previous: $exception);
+            throw new StructuredContentGenerationException(
+                'The generated response was not valid JSON.',
+                diagnosticCategory: 'json_decode',
+                previous: $exception,
+            );
         }
 
         if (! $decodedObject instanceof stdClass) {
-            throw new StructuredContentGenerationException('The generated response must be a JSON object.');
+            throw new StructuredContentGenerationException(
+                'The generated response must be a JSON object.',
+                diagnosticCategory: 'json_root',
+            );
         }
 
         $content = json_decode($response->text, true, flags: JSON_THROW_ON_ERROR);
 
         if (! is_array($content)) {
-            throw new StructuredContentGenerationException('The generated response must be a JSON object.');
+            throw new StructuredContentGenerationException(
+                'The generated response must be a JSON object.',
+                diagnosticCategory: 'json_root',
+            );
         }
 
         $validationRules = [
@@ -76,7 +89,17 @@ class GenerateStructuredContent
         }
 
         if ($validationFailed || $validator->errors()->isNotEmpty()) {
-            throw new StructuredContentGenerationException('The generated content failed validation.');
+            $fieldPaths = array_values(array_filter(
+                $validator->errors()->keys(),
+                static fn (string $path): bool => strlen($path) <= 160
+                    && preg_match('/\A[a-zA-Z0-9_.\[\]-]+\z/', $path) === 1,
+            ));
+
+            throw new StructuredContentGenerationException(
+                'The generated content failed validation.',
+                diagnosticCategory: $validationFailed ? 'schema_validation' : 'semantic_validation',
+                fieldPaths: $fieldPaths,
+            );
         }
 
         return new StructuredContentGenerationResult(

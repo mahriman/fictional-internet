@@ -11,6 +11,7 @@ use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 
 uses(RefreshDatabase::class);
@@ -313,6 +314,7 @@ test('provider failure returns safely to the form and preserves submitted values
             'error' => ['message' => 'Sensitive provider response body must not be shown.'],
         ], 503),
     ]);
+    Log::spy();
 
     $this->followingRedirects()
         ->from(route('projects.generated-content.create', $project))
@@ -327,6 +329,11 @@ test('provider failure returns safely to the form and preserves submitted values
         ->assertSee($prompt)
         ->assertDontSee('Sensitive provider response body must not be shown.')
         ->assertSessionMissingInput('api_key');
+
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->withArgs(static fn (string $message, array $context): bool => $message === 'OpenAI generation request failed.'
+            && $context === ['failure_kind' => 'temporary_provider', 'http_status' => 503]);
 
     expect($project->generatedContents()->count())->toBe(0)
         ->and(GeneratedContentVersion::query()->count())->toBe(0);
@@ -351,6 +358,7 @@ test('structured generation failure creates no records and preserves form input'
             ]],
         ]),
     ]);
+    Log::spy();
 
     $this->followingRedirects()
         ->from(route('projects.generated-content.create', $project))
@@ -362,6 +370,18 @@ test('structured generation failure creates no records and preserves form input'
         ->assertOk()
         ->assertSee('OpenAI did not return valid structured content. Submit again to start a new attempt.')
         ->assertSee($prompt);
+
+    Log::shouldHaveReceived('warning')
+        ->once()
+        ->withArgs(function (string $message, array $context) use ($prompt): bool {
+            $serializedContext = json_encode($context, JSON_THROW_ON_ERROR);
+
+            return $message === 'Structured content generation failed.'
+                && $context['category'] === 'schema_validation'
+                && is_array($context['field_paths'])
+                && ! str_contains($serializedContext, $prompt)
+                && ! str_contains($serializedContext, 'Missing required properties');
+        });
 
     expect($project->generatedContents()->count())->toBe(0)
         ->and(GeneratedContentVersion::query()->count())->toBe(0);

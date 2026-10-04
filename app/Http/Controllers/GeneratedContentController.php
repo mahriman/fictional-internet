@@ -26,6 +26,7 @@ use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
@@ -147,14 +148,23 @@ class GeneratedContentController extends Controller
             );
         } catch (OpenAiException $exception) {
             $this->markAttemptFailed($attempts, $attempt);
+            Log::warning('OpenAI generation request failed.', [
+                'failure_kind' => $exception->failureKind->value,
+                'http_status' => $exception->statusCode,
+            ]);
             $message = $this->openAiFailureMessage($exception);
             $errorKey = in_array($exception->failureKind, [OpenAiFailureKind::Authentication, OpenAiFailureKind::Authorization], true)
                 ? 'credentials'
                 : 'generation';
 
             return $this->generationFormRedirect($request, $project, [$errorKey => $message]);
-        } catch (StructuredContentGenerationException) {
+        } catch (StructuredContentGenerationException $exception) {
             $this->markAttemptFailed($attempts, $attempt);
+            Log::warning('Structured content generation failed.', [
+                'content_type' => $request->validated('content_type'),
+                'category' => $exception->diagnosticCategory,
+                'field_paths' => $exception->fieldPaths,
+            ]);
 
             return $this->generationFormRedirect(
                 $request,
