@@ -51,6 +51,7 @@ class ProjectController extends Controller
     public function show(Project $project, ContentTypeRegistry $contentTypes): View
     {
         Gate::authorize('view', $project);
+        $project->load('context');
 
         $generatedContents = $project->generatedContents()
             ->latest('created_at')

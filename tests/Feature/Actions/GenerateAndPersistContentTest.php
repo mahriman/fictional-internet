@@ -1,5 +1,6 @@
 <?php
 
+use App\Actions\EditGeneratedContentVersion;
 use App\Actions\GenerateAndPersistContent;
 use App\Actions\GeneratedContentGenerationResult;
 use App\ContentTypes\ContentTypeRegistry;
@@ -102,6 +103,7 @@ test('generation is persisted as the first immutable ai generated version', func
         'content_type' => 'news_article',
         'prompt' => $prompt,
         'instructions' => 'Write a fictional news article with a clear headline, publication, publication date, and article body.',
+        'project_context' => null,
     ])->and($result->version->fresh()->generation_metadata)->toBe([
         'provider' => 'openai',
         'model' => 'actual-test-model',
@@ -112,6 +114,114 @@ test('generation is persisted as the first immutable ai generated version', func
         'content_type' => 'news_article',
     ])->and($result->generationMetadata)->toBe($result->version->generation_metadata)
         ->and($persistedInputs)->not->toContain('configured-test-key');
+});
+
+test('generation uses and snapshots one captured project context for later manual edits', function () {
+    $project = Project::factory()->create();
+    $prompt = 'Write a report about the winter festival.';
+    $projectContext = [
+        'setting' => 'The harbor city of Bellweather has perpetual fog.',
+        'time_period' => 'Late autumn, 1998.',
+        'locations' => 'North Pier and the old signal tower.',
+        'people' => 'Mara Venn is the night dispatcher.',
+        'organizations' => null,
+        'canon_notes' => 'The harbor signal is never understood by residents.',
+    ];
+    $project->context()->create($projectContext);
+
+    Http::fake(function (Request $request) use ($prompt, $projectContext): PromiseInterface {
+        expect($request['instructions'])->toBe(app(ContentTypeRegistry::class)->get('news_article')->promptInstructions())
+            ->and($request['input'])->toContain('<<<USER_GENERATION_PROMPT>>>')
+            ->and($request['input'])->toContain($prompt)
+            ->and($request['input'])->toContain('<<<END_USER_GENERATION_PROMPT>>>')
+            ->and($request['input'])->toContain('PROJECT_CONTEXT_REFERENCE_DATA')
+            ->and($request['input'])->toContain(json_encode(
+                $projectContext,
+                JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR,
+            ))
+            ->and($request['input'])->toContain($projectContext['setting'])
+            ->and($request['input'])->toContain($projectContext['people'])
+            ->and($request['input'])->not->toContain('configured-test-key');
+
+        return Http::response([
+            'id' => 'resp_project_context',
+            'status' => 'completed',
+            'model' => 'actual-test-model',
+            'output' => [[
+                'type' => 'message',
+                'content' => [[
+                    'type' => 'output_text',
+                    'text' => json_encode([
+                        'headline' => 'Festival Lights at North Pier',
+                        'publication' => 'The Harbor Ledger',
+                        'published_at' => '1998-11-20T08:00:00Z',
+                        'body' => 'Mara Venn reported from the old signal tower.',
+                    ], JSON_THROW_ON_ERROR),
+                ]],
+            ]],
+        ]);
+    });
+
+    $result = app(GenerateAndPersistContent::class)->handle($project, 'news_article', $prompt);
+    $expectedSnapshot = [
+        'content_type' => 'news_article',
+        'prompt' => $prompt,
+        'instructions' => 'Write a fictional news article with a clear headline, publication, publication date, and article body.',
+        'project_context' => $projectContext,
+    ];
+
+    expect($result->version->fresh()->context_snapshot)->toBe($expectedSnapshot);
+
+    $project->context()->update(['setting' => 'A changed world setting.']);
+
+    expect($result->version->fresh()->context_snapshot)->toBe($expectedSnapshot);
+
+    $editedVersion = app(EditGeneratedContentVersion::class)->handle(
+        $result->version,
+        [
+            'headline' => 'Festival Lights at North Pier, Revisited',
+            'publication' => 'The Harbor Ledger',
+            'published_at' => '1998-11-20T08:00:00Z',
+            'body' => 'Mara Venn filed an updated report.',
+        ],
+    );
+
+    expect($editedVersion->context_snapshot)->toBe($expectedSnapshot)
+        ->and($editedVersion->generation_metadata)->toBeNull();
+
+    Http::assertSentCount(1);
+});
+
+test('an entirely empty project context preserves the original provider input', function () {
+    $project = Project::factory()->create();
+    $prompt = 'Write a short fictional report.';
+    $project->context()->create([]);
+
+    Http::fake([
+        'https://api.openai.com/v1/responses' => Http::response([
+            'id' => 'resp_empty_project_context',
+            'status' => 'completed',
+            'model' => 'actual-test-model',
+            'output' => [[
+                'type' => 'message',
+                'content' => [[
+                    'type' => 'output_text',
+                    'text' => json_encode([
+                        'headline' => 'A Quiet Night at North Pier',
+                        'publication' => 'The Harbor Ledger',
+                        'published_at' => '1998-11-20T08:00:00Z',
+                        'body' => 'The pier was quiet after sunset.',
+                    ], JSON_THROW_ON_ERROR),
+                ]],
+            ]],
+        ]),
+    ]);
+
+    app(GenerateAndPersistContent::class)->handle($project, 'news_article', $prompt);
+
+    Http::assertSent(fn (Request $request): bool => $request['input'] === $prompt);
+
+    expect($project->generatedContents()->sole()->versions()->sole()->context_snapshot['project_context'])->toBeNull();
 });
 
 test('a content type may omit its generated content title', function () {

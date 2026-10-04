@@ -8,6 +8,7 @@ use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\Relations\HasOne;
 use Illuminate\Support\Str;
 
 #[Fillable(['user_id', 'name', 'description'])]
@@ -38,5 +39,10 @@ class Project extends Model
     public function generatedContents(): HasMany
     {
         return $this->hasMany(GeneratedContent::class);
+    }
+
+    public function context(): HasOne
+    {
+        return $this->hasOne(ProjectContext::class);
     }
 }

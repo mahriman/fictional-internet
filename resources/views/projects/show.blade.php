@@ -21,6 +21,43 @@
         </div>
     </section>
 
+    <section aria-labelledby="project-context-heading" class="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+        <div class="flex flex-col justify-between gap-4 border-b border-slate-100 pb-5 sm:flex-row sm:items-start">
+            <div>
+                <p class="text-sm font-semibold uppercase tracking-[0.16em] text-indigo-700">Reusable generation context</p>
+                <h2 id="project-context-heading" class="mt-2 text-xl font-semibold text-slate-950">Project context</h2>
+                <p class="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Fictional-world details used as reference when generating new content. This is separate from the project description.</p>
+            </div>
+            <a href="{{ route('projects.context.edit', $project) }}" class="inline-flex shrink-0 justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Edit project context</a>
+        </div>
+
+        @php($contextSections = [
+            'setting' => 'Setting',
+            'time_period' => 'Time period',
+            'locations' => 'Locations',
+            'people' => 'People',
+            'organizations' => 'Organizations',
+            'canon_notes' => 'Canon notes',
+        ])
+        @if ($project->context && collect($contextSections)->contains(fn ($label, $field) => filled($project->context->{$field})))
+            <dl class="mt-5 grid gap-5 sm:grid-cols-2">
+                @foreach ($contextSections as $field => $label)
+                    @if (filled($project->context->{$field}))
+                        <div>
+                            <dt class="text-sm font-semibold text-slate-900">{{ $label }}</dt>
+                            <dd class="mt-1 whitespace-pre-wrap break-words text-sm leading-6 text-slate-600">{{ $project->context->{$field} }}</dd>
+                        </div>
+                    @endif
+                @endforeach
+            </dl>
+        @else
+            <div class="py-8 text-center">
+                <p class="font-medium text-slate-900">No project context has been added yet.</p>
+                <p class="mt-2 text-sm text-slate-600">Add setting, places, people and continuity notes to guide future generations.</p>
+            </div>
+        @endif
+    </section>
+
     <section aria-labelledby="generated-content-heading" class="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
         <div class="border-b border-slate-100 pb-5">
             <p class="text-sm font-semibold uppercase tracking-[0.16em] text-indigo-700">Workspace</p>
