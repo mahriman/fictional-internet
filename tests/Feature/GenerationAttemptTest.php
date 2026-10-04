@@ -15,6 +15,7 @@ use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 
 uses(RefreshDatabase::class);
 
@@ -430,6 +431,52 @@ test('incomplete and malformed provider responses become safe feedback without r
     ]],
     'malformed json body' => ['not-json'],
 ]);
+
+test('incomplete response diagnostics are safe and the claimed attempt remains failed', function () {
+    $project = Project::factory()->create();
+    OpenAiCredential::factory()->for($project->user)->create(['api_key' => 'private-generation-key']);
+    $token = app(GenerationAttemptManager::class)->tokenForForm($project->user, $project, null);
+    Log::spy();
+    Http::fake(['https://api.openai.com/v1/responses' => Http::response([
+        'id' => 'resp_incomplete_private_id',
+        'status' => 'incomplete',
+        'incomplete_details' => ['reason' => 'max_output_tokens'],
+        'usage' => [
+            'output_tokens' => 6000,
+            'output_tokens_details' => ['reasoning_tokens' => 1200],
+        ],
+    ])]);
+
+    $this->actingAs($project->user)
+        ->from(route('projects.generated-content.create', $project))
+        ->post(route('projects.generated-content.store', $project), [
+            ...personalGenerationAttemptFields($project, $token),
+            'content_type' => 'forum_thread',
+            'prompt' => 'PRIVATE DISCUSSION PROMPT',
+        ])
+        ->assertRedirect(route('projects.generated-content.create', $project))
+        ->assertSessionHasErrors('generation');
+
+    expect(GenerationAttempt::query()->sole()->status)->toBe(GenerationAttemptStatus::Failed)
+        ->and($project->generatedContents()->exists())->toBeFalse()
+        ->and(GeneratedContentVersion::query()->exists())->toBeFalse();
+
+    Log::shouldHaveReceived('warning')->once()->with(
+        'OpenAI generation request failed.',
+        Mockery::on(fn (array $context): bool => $context === [
+            'content_type' => 'forum_thread',
+            'failure_kind' => 'incomplete_response',
+            'http_status' => 200,
+            'diagnostic_stage' => 'provider_incomplete_response',
+            'provider_status' => 'incomplete',
+            'requested_max_output_tokens' => null,
+            'output_tokens' => 6000,
+            'reasoning_tokens' => 1200,
+            'usage_metadata_malformed' => false,
+            'incomplete_reason' => 'max_output_tokens',
+        ]),
+    );
+});
 
 test('reference-size validation happens before claiming so the token remains unconsumed', function () {
     $project = Project::factory()->create();

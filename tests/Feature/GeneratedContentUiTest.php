@@ -333,7 +333,13 @@ test('provider failure returns safely to the form and preserves submitted values
     Log::shouldHaveReceived('warning')
         ->once()
         ->withArgs(static fn (string $message, array $context): bool => $message === 'OpenAI generation request failed.'
-            && $context === ['failure_kind' => 'temporary_provider', 'http_status' => 503]);
+            && $context === [
+                'content_type' => 'news_article',
+                'failure_kind' => 'temporary_provider',
+                'http_status' => 503,
+                'diagnostic_stage' => 'provider_http_error',
+                'requested_max_output_tokens' => null,
+            ]);
 
     expect($project->generatedContents()->count())->toBe(0)
         ->and(GeneratedContentVersion::query()->count())->toBe(0);

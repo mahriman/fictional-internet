@@ -2,6 +2,7 @@
 
 use App\Services\OpenAI\OpenAiClient;
 use App\Services\OpenAI\OpenAiException;
+use App\Services\OpenAI\OpenAiFailureKind;
 use App\Services\OpenAI\OpenAiResponseResult;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Request;
@@ -45,6 +46,7 @@ test('a non-streaming response request uses the configured model and explicitly 
                 'input_tokens' => 12,
                 'output_tokens' => 8,
                 'total_tokens' => 20,
+                'output_tokens_details' => ['reasoning_tokens' => 3],
             ],
         ]),
     ]);
@@ -59,6 +61,7 @@ test('a non-streaming response request uses the configured model and explicitly 
             && $request['input'] === 'Use this input.'
             && $request['store'] === false
             && $request['stream'] === false
+            && ! isset($request['max_output_tokens'])
             && ! isset($request['text']);
     });
 
@@ -68,7 +71,11 @@ test('a non-streaming response request uses the configured model and explicitly 
         ->and($result->model)->toBe('actual-test-model')
         ->and($result->inputTokens)->toBe(12)
         ->and($result->outputTokens)->toBe(8)
-        ->and($result->totalTokens)->toBe(20);
+        ->and($result->totalTokens)->toBe(20)
+        ->and($result->providerStatus)->toBe('completed')
+        ->and($result->reasoningTokens)->toBe(3)
+        ->and($result->httpStatus)->toBe(200)
+        ->and($result->requestedMaxOutputTokens)->toBeNull();
 });
 
 test('an explicitly supplied api key uses the same request flow', function () {
@@ -168,17 +175,102 @@ test('network errors are wrapped without retrying the request', function () {
     expect($attempts)->toBe(1);
 });
 
-test('incomplete responses are rejected', function () {
+test('incomplete responses retain allowlisted status reason and usage diagnostics', function (string $reason) {
     Http::fake([
         'https://api.openai.com/v1/responses' => Http::response([
             'id' => 'resp_incomplete',
             'status' => 'incomplete',
-            'incomplete_details' => ['reason' => 'max_output_tokens'],
+            'incomplete_details' => ['reason' => $reason],
+            'usage' => [
+                'output_tokens' => 1234,
+                'output_tokens_details' => ['reasoning_tokens' => 987],
+            ],
         ]),
     ]);
 
-    expect(fn () => app(OpenAiClient::class)->createResponse('Instructions.', 'Input.', 'test-api-key'))
-        ->toThrow(OpenAiException::class, 'The OpenAI response was incomplete.');
+    try {
+        app(OpenAiClient::class)->createResponse('Instructions.', 'Input.', 'test-api-key');
+        test()->fail('Incomplete responses must be rejected.');
+    } catch (OpenAiException $exception) {
+        expect($exception->failureKind)->toBe(OpenAiFailureKind::IncompleteResponse)
+            ->and($exception->statusCode)->toBeNull()
+            ->and($exception->diagnosticContext)->toBe([
+                'diagnostic_stage' => 'provider_incomplete_response',
+                'http_status' => 200,
+                'provider_status' => 'incomplete',
+                'requested_max_output_tokens' => null,
+                'output_tokens' => 1234,
+                'reasoning_tokens' => 987,
+                'usage_metadata_malformed' => false,
+                'incomplete_reason' => $reason,
+            ]);
+    }
+})->with(['max_output_tokens', 'content_filter']);
+
+test('unknown incomplete reasons are categorized without retaining provider text', function () {
+    Http::fake([
+        'https://api.openai.com/v1/responses' => Http::response([
+            'status' => 'incomplete',
+            'incomplete_details' => ['reason' => 'private-unexpected-provider-value'],
+        ]),
+    ]);
+
+    try {
+        app(OpenAiClient::class)->createResponse('Instructions.', 'Input.', 'test-api-key');
+        test()->fail('Incomplete responses must be rejected.');
+    } catch (OpenAiException $exception) {
+        expect($exception->diagnosticContext['incomplete_reason'])->toBe('other')
+            ->and(json_encode($exception->diagnosticContext))->not->toContain('private-unexpected-provider-value');
+    }
+});
+
+test('missing and malformed provider response statuses are classified safely', function (array $body, ?string $safeStatus) {
+    Http::fake([
+        'https://api.openai.com/v1/responses' => Http::response($body),
+    ]);
+
+    try {
+        app(OpenAiClient::class)->createResponse('Instructions.', 'Input.', 'test-api-key');
+        test()->fail('Malformed statuses must be rejected.');
+    } catch (OpenAiException $exception) {
+        expect($exception->failureKind)->toBe(OpenAiFailureKind::MalformedResponse)
+            ->and($exception->diagnosticContext['diagnostic_stage'])->toBe('provider_response_status')
+            ->and($exception->diagnosticContext['provider_status'])->toBe($safeStatus);
+    }
+})->with([
+    'missing status' => [['id' => 'resp_missing_status'], null],
+    'non-string status' => [['status' => 42], null],
+    'unknown status' => [['status' => 'private-provider-status'], 'unexpected'],
+]);
+
+test('malformed usage metadata is classified without retaining unexpected values', function () {
+    Http::fake([
+        'https://api.openai.com/v1/responses' => Http::response([
+            'id' => 'resp_bad_usage',
+            'status' => 'completed',
+            'model' => 'actual-test-model',
+            'output' => [[
+                'type' => 'message',
+                'content' => [['type' => 'output_text', 'text' => 'PRIVATE GENERATED TEXT']],
+            ]],
+            'usage' => [
+                'output_tokens' => 'private usage payload',
+                'output_tokens_details' => ['reasoning_tokens' => -1],
+            ],
+        ]),
+    ]);
+
+    try {
+        app(OpenAiClient::class)->createResponse('PRIVATE PROMPT', 'PRIVATE INPUT', 'test-api-key');
+        test()->fail('Malformed usage metadata must be rejected.');
+    } catch (OpenAiException $exception) {
+        expect($exception->failureKind)->toBe(OpenAiFailureKind::MalformedResponse)
+            ->and($exception->diagnosticContext['diagnostic_stage'])->toBe('usage_metadata')
+            ->and($exception->diagnosticContext['usage_metadata_malformed'])->toBeTrue()
+            ->and($exception->diagnosticContext['output_tokens'])->toBeNull()
+            ->and($exception->diagnosticContext['reasoning_tokens'])->toBeNull()
+            ->and(json_encode($exception->diagnosticContext))->not->toContain('PRIVATE');
+    }
 });
 
 test('provider refusals are rejected without exposing refusal text', function () {

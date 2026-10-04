@@ -153,8 +153,10 @@ class GeneratedContentController extends Controller
         } catch (OpenAiException $exception) {
             $this->markAttemptFailed($attempts, $attempt);
             Log::warning('OpenAI generation request failed.', [
+                'content_type' => $request->validated('content_type'),
                 'failure_kind' => $exception->failureKind->value,
                 'http_status' => $exception->statusCode,
+                ...$exception->diagnosticContext,
             ]);
             $message = $this->openAiFailureMessage($exception);
             $errorKey = in_array($exception->failureKind, [OpenAiFailureKind::Authentication, OpenAiFailureKind::Authorization], true)
@@ -167,7 +169,9 @@ class GeneratedContentController extends Controller
             Log::warning('Structured content generation failed.', [
                 'content_type' => $request->validated('content_type'),
                 'category' => $exception->diagnosticCategory,
+                'diagnostic_codes' => $exception->diagnosticCodes,
                 'field_paths' => $exception->fieldPaths,
+                ...$exception->diagnosticContext,
             ]);
 
             return $this->generationFormRedirect(

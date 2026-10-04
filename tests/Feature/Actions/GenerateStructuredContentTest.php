@@ -144,8 +144,42 @@ test('malformed generated json is rejected without exposing the response text', 
     } catch (StructuredContentGenerationException $exception) {
         expect($exception->getMessage())->toBe('The generated response was not valid JSON.')
             ->and($exception->diagnosticCategory)->toBe('json_decode')
+            ->and($exception->diagnosticCodes)->toBe(['invalid_json'])
+            ->and($exception->diagnosticContext)->toMatchArray([
+                'diagnostic_stage' => 'json_decode',
+                'provider_status' => 'completed',
+                'http_status' => 200,
+            ])
             ->and($exception->fieldPaths)->toBe([])
             ->and($exception->getMessage())->not->toContain($malformedJson);
+    }
+});
+
+test('a non-object json root has a distinct safe diagnostic', function () {
+    Http::fake([
+        'https://api.openai.com/v1/responses' => Http::response([
+            'id' => 'resp_wrong_root',
+            'status' => 'completed',
+            'model' => 'actual-test-model',
+            'output' => [[
+                'type' => 'message',
+                'content' => [['type' => 'output_text', 'text' => '["PRIVATE OUTPUT"]']],
+            ]],
+        ]),
+    ]);
+
+    try {
+        app(GenerateStructuredContent::class)->handle('news_article', 'PRIVATE PROMPT', 'structured-test-key');
+        test()->fail('A non-object JSON root should be rejected.');
+    } catch (StructuredContentGenerationException $exception) {
+        expect($exception->diagnosticCategory)->toBe('json_root')
+            ->and($exception->diagnosticCodes)->toBe(['unexpected_json_root'])
+            ->and($exception->diagnosticContext)->toMatchArray([
+                'diagnostic_stage' => 'json_root',
+                'provider_status' => 'completed',
+                'http_status' => 200,
+            ])
+            ->and($exception->getMessage())->not->toContain('PRIVATE');
     }
 });
 

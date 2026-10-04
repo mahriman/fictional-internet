@@ -11,5 +11,9 @@ final readonly class OpenAiResponseResult
         public ?int $inputTokens,
         public ?int $outputTokens,
         public ?int $totalTokens,
+        public string $providerStatus = 'completed',
+        public ?int $reasoningTokens = null,
+        public ?int $httpStatus = null,
+        public ?int $requestedMaxOutputTokens = null,
     ) {}
 }

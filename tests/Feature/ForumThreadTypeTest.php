@@ -420,8 +420,39 @@ test('semantic quote failures expose only a safe category and field path for dia
     } catch (StructuredContentGenerationException $exception) {
         expect($exception->diagnosticCategory)->toBe('semantic_validation')
             ->and($exception->fieldPaths)->toContain('content.posts.1.quote.text')
+            ->and($exception->diagnosticCodes)->toBe(['semantic_validation_failed', 'discussion_quote_invalid'])
+            ->and($exception->diagnosticContext)->toMatchArray([
+                'diagnostic_stage' => 'semantic_validation',
+                'provider_status' => 'completed',
+                'http_status' => 200,
+                'output_tokens' => 90,
+                'entry_collection' => 'posts',
+                'entry_count' => 2,
+            ])
             ->and($exception->getMessage())->toBe('The generated content failed validation.')
             ->and($exception->fieldPaths)->not->toContain($thread['posts'][1]['quote']['text']);
+    }
+});
+
+test('schema validation diagnostics include discussion size without generated values', function () {
+    $thread = validForumThread();
+    unset($thread['posts'][1]['author']);
+    Http::fake(['https://api.openai.com/v1/responses' => Http::response(fakeForumThreadResponse($thread))]);
+
+    try {
+        app(GenerateStructuredContent::class)->handle('forum_thread', 'PRIVATE PROMPT', 'forum-test-key');
+        test()->fail('Schema-invalid output must be rejected.');
+    } catch (StructuredContentGenerationException $exception) {
+        expect($exception->diagnosticCategory)->toBe('schema_validation')
+            ->and($exception->diagnosticCodes)->toBe(['content_schema_validation_failed'])
+            ->and($exception->fieldPaths)->toContain('content.posts.1.author')
+            ->and($exception->diagnosticContext)->toMatchArray([
+                'diagnostic_stage' => 'schema_validation',
+                'provider_status' => 'completed',
+                'entry_collection' => 'posts',
+                'entry_count' => 2,
+            ])
+            ->and(json_encode($exception->diagnosticContext))->not->toContain('PRIVATE');
     }
 });
 

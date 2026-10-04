@@ -259,6 +259,33 @@ test('invalid SchreckNet structure is rejected before content or version persist
     'too many messages' => [array_replace(validSchreckNetThread(), ['messages' => array_fill(0, 31, validSchreckNetThread()['messages'][0])])],
 ]);
 
+test('SchreckNet semantic diagnostics identify chronology without logging message content', function () {
+    $thread = validSchreckNetThread();
+    $thread['messages'][2]['posted_at'] = '2025-06-15T10:04:00+00:00';
+    Http::fake(['https://api.openai.com/v1/responses' => Http::response(schreckNetResponse($thread))]);
+
+    try {
+        app(GenerateAndPersistContent::class)->handle(
+            Project::factory()->create(),
+            'schrecknet_thread',
+            'PRIVATE GENERATION PROMPT',
+            'private-schrecknet-api-key',
+        );
+        test()->fail('Decreasing timestamps must fail semantic validation.');
+    } catch (StructuredContentGenerationException $exception) {
+        expect($exception->diagnosticCategory)->toBe('semantic_validation')
+            ->and($exception->diagnosticCodes)->toBe(['semantic_validation_failed', 'discussion_timestamp_invalid'])
+            ->and($exception->fieldPaths)->toContain('content.messages.2.posted_at')
+            ->and($exception->diagnosticContext)->toMatchArray([
+                'provider_status' => 'completed',
+                'output_tokens' => 150,
+                'entry_collection' => 'messages',
+                'entry_count' => 3,
+            ])
+            ->and(json_encode($exception->diagnosticContext))->not->toContain('PRIVATE');
+    }
+});
+
 test('SchreckNet editing creates an immutable version with preserved numbers, lineage and snapshot', function () {
     $user = User::factory()->create();
     $project = Project::factory()->for($user)->create();
