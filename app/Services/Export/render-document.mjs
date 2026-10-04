@@ -9,10 +9,27 @@ const MAX_PNG_HEIGHT = 12_000;
 const MAX_PNG_PIXELS = 8_000_000;
 const TIMEOUT_MS = 45_000;
 let failureStage = 'request';
+let cleanupFailureStage;
+let sessionDeletionFailed = false;
+let rendererTimedOut = false;
 
 function fail(code = 1) {
-    process.stderr.write(code === 42 ? 'PNG_DOCUMENT_TOO_TALL' : `EXPORT_RENDERER_FAILED:${failureStage}`);
-    process.exitCode = code;
+    if (code === 42 && cleanupFailureStage === undefined) {
+        process.stderr.write('PNG_DOCUMENT_TOO_TALL');
+        process.exitCode = 42;
+
+        return;
+    }
+
+    process.stderr.write(`EXPORT_RENDERER_FAILED:${failureStage}`);
+
+    const secondaryCleanupStage = cleanupFailureStage ?? (sessionDeletionFailed ? 'webdriver_session_cleanup_failure' : undefined);
+
+    if (secondaryCleanupStage !== undefined) {
+        process.stderr.write(`\nEXPORT_RENDERER_CLEANUP_FAILED:${secondaryCleanupStage}`);
+    }
+
+    process.exitCode = 1;
 }
 
 async function reservePort() {
@@ -25,11 +42,103 @@ async function reservePort() {
     return { port: server.address().port, server };
 }
 
-async function waitForWebDriver(port, driver) {
+function driverHasExited(driver) {
+    return driver.exitCode !== null || driver.signalCode !== null;
+}
+
+function signalRendererProcessGroup(driver, signal) {
+    if (!driver?.pid) {
+        return true;
+    }
+
+    try {
+        process.kill(-driver.pid, signal);
+
+        return true;
+    } catch (error) {
+        return error?.code === 'ESRCH';
+    }
+}
+
+async function rendererProcessGroupExists(driver) {
+    if (!driver?.pid) {
+        return false;
+    }
+
+    try {
+        process.kill(-driver.pid, 0);
+
+        return true;
+    } catch (error) {
+        return error?.code !== 'ESRCH';
+    }
+}
+
+async function waitForRendererProcessGroupExit(driver, timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+
+    while (Date.now() < deadline) {
+        if (! await rendererProcessGroupExists(driver)) {
+            return true;
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+
+    return ! await rendererProcessGroupExists(driver);
+}
+
+async function terminateRendererProcessGroup(driver) {
+    if (! driver?.pid) {
+        return true;
+    }
+
+    if (! signalRendererProcessGroup(driver, 'SIGTERM')) {
+        return false;
+    }
+
+    if (await waitForRendererProcessGroupExit(driver, 2_000)) {
+        return true;
+    }
+
+    if (! signalRendererProcessGroup(driver, 'SIGKILL')) {
+        return false;
+    }
+
+    return waitForRendererProcessGroupExit(driver, 2_000);
+}
+
+async function closeReservation(server) {
+    if (! server.listening) {
+        return true;
+    }
+
+    return new Promise((resolve) => {
+        let completed = false;
+        const finish = (succeeded) => {
+            if (completed) {
+                return;
+            }
+
+            completed = true;
+            clearTimeout(timer);
+            resolve(succeeded);
+        };
+        const timer = setTimeout(() => finish(false), 500);
+
+        try {
+            server.close((error) => finish(error === undefined));
+        } catch {
+            finish(false);
+        }
+    });
+}
+
+async function waitForWebDriver(port, driver, launchFailed) {
     const deadline = Date.now() + 12_000;
     let responseStatus;
 
-    while (Date.now() < deadline && driver.exitCode === null) {
+    while (Date.now() < deadline && ! launchFailed() && ! driverHasExited(driver)) {
         try {
             const response = await fetch(`http://127.0.0.1:${port}/status`, {
                 signal: AbortSignal.timeout(500),
@@ -46,9 +155,19 @@ async function waitForWebDriver(port, driver) {
         }
     }
 
-    failureStage = driver.exitCode === null
-        ? `webdriver_status_timeout${responseStatus ? `_${responseStatus}` : ''}`
-        : `webdriver_exit_${driver.exitCode}`;
+    if (launchFailed()) {
+        failureStage = 'webdriver_launch_failure';
+    } else if (driver.exitCode !== null) {
+        failureStage = `webdriver_exit_${driver.exitCode}`;
+    } else if (driver.signalCode !== null) {
+        const signal = ['SIGTERM', 'SIGKILL', 'SIGHUP', 'SIGABRT'].includes(driver.signalCode)
+            ? driver.signalCode.toLowerCase()
+            : 'signal';
+        failureStage = `webdriver_exit_${signal}`;
+    } else {
+        failureStage = `webdriver_status_timeout${responseStatus ? `_${responseStatus}` : ''}`;
+    }
+
     throw new Error('WebDriver unavailable');
 }
 
@@ -89,16 +208,18 @@ async function command(socket, id, method, params = {}) {
 
 async function closeSession(port, sessionId) {
     if (!sessionId) {
-        return;
+        return true;
     }
 
     try {
-        await fetch(`http://127.0.0.1:${port}/session/${sessionId}`, {
+        const response = await fetch(`http://127.0.0.1:${port}/session/${sessionId}`, {
             method: 'DELETE',
             signal: AbortSignal.timeout(2_000),
         });
+
+        return response.ok;
     } catch {
-        // Process cleanup below still terminates the isolated renderer.
+        return false;
     }
 }
 
@@ -139,6 +260,8 @@ async function main() {
     let sessionId;
     let socket;
     let timeout;
+    let driverLaunchFailed = false;
+    let documentTooTall = false;
     const reservations = [];
 
     try {
@@ -150,7 +273,11 @@ async function main() {
         reservations.push(bidiReservation.server);
         driverPort = driverReservation.port;
         const bidiPort = bidiReservation.port;
-        await Promise.all(reservations.map((server) => new Promise((resolve) => server.close(resolve))));
+        const reservationsClosed = await Promise.all(reservations.map(closeReservation));
+        if (reservationsClosed.some((closed) => !closed)) {
+            failureStage = 'port_reservation_cleanup_failure';
+            throw new Error('Renderer port reservation cleanup failed');
+        }
         reservations.length = 0;
         driver = spawn(request.geckodriver, [
             '--host', '127.0.0.1',
@@ -160,6 +287,7 @@ async function main() {
             '--log', 'fatal',
             '--profile-root', root,
         ], {
+            detached: true,
             stdio: ['ignore', 'ignore', 'ignore'],
             env: {
                 PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
@@ -168,9 +296,15 @@ async function main() {
                 MOZ_HEADLESS: '1',
             },
         });
-        timeout = setTimeout(() => driver.kill('SIGKILL'), TIMEOUT_MS);
+        driver.on('error', () => {
+            driverLaunchFailed = true;
+        });
+        timeout = setTimeout(() => {
+            rendererTimedOut = true;
+            signalRendererProcessGroup(driver, 'SIGTERM');
+        }, TIMEOUT_MS);
         failureStage = 'webdriver_status';
-        await waitForWebDriver(driverPort, driver);
+        await waitForWebDriver(driverPort, driver, () => driverLaunchFailed);
 
         failureStage = 'webdriver_session_request';
         const sessionResponse = await fetch(`http://127.0.0.1:${driverPort}/session`, {
@@ -263,62 +397,87 @@ async function main() {
             const dimensions = JSON.parse(dimensionsResult.result.value);
 
             if (dimensions.height > MAX_PNG_HEIGHT || dimensions.width * dimensions.height > MAX_PNG_PIXELS) {
-                fail(42);
-
-                return;
+                documentTooTall = true;
+            } else {
+                failureStage = 'png_capture';
+                rendered = await command(socket, 5, 'browsingContext.captureScreenshot', {
+                    context,
+                    origin: 'document',
+                    format: { type: 'image/png' },
+                });
+                rendered = Buffer.from(rendered.data, 'base64');
             }
-
-            failureStage = 'png_capture';
-            rendered = await command(socket, 5, 'browsingContext.captureScreenshot', {
-                context,
-                origin: 'document',
-                format: { type: 'image/png' },
-            });
-            rendered = Buffer.from(rendered.data, 'base64');
         }
 
-        if (rendered.length < 8) {
+        if (!documentTooTall && rendered.length < 8) {
             throw new Error('Renderer returned empty data');
         }
 
-        process.stdout.write(rendered);
+        if (!documentTooTall) {
+            process.stdout.write(rendered);
+        }
     } finally {
         clearTimeout(timeout);
-        await closeSession(driverPort, sessionId);
+        if (! await closeSession(driverPort, sessionId)) {
+            sessionDeletionFailed = true;
+        }
 
-        if (socket?.readyState === WebSocket.OPEN) {
-            socket.close();
+        try {
+            if (socket && socket.readyState !== WebSocket.CLOSED) {
+                socket.close();
+            }
+        } catch {
+            cleanupFailureStage ??= 'bidi_socket_cleanup_failure';
         }
 
         for (const server of reservations) {
-            if (server.listening) {
-                await new Promise((resolve) => server.close(resolve));
+            if (! await closeReservation(server)) {
+                cleanupFailureStage ??= 'port_reservation_cleanup_failure';
             }
         }
 
-        if (driver && driver.exitCode === null && driver.signalCode === null) {
-            await new Promise((resolve) => {
-                const finish = () => {
-                    clearTimeout(killTimeout);
-                    resolve();
-                };
-                const killTimeout = setTimeout(() => {
-                    driver.kill('SIGKILL');
+        const browserProcessGroupStopped = !driver || await terminateRendererProcessGroup(driver);
 
-                    if (driver.exitCode !== null || driver.signalCode !== null) {
-                        finish();
-                    }
-                }, 2_000);
-
-                driver.once('exit', finish);
-                driver.kill('SIGTERM');
-            });
+        if (!browserProcessGroupStopped) {
+            cleanupFailureStage ??= 'browser_process_cleanup_failure';
         }
 
         if (root) {
-            await rm(root, { recursive: true, force: true });
+            if (browserProcessGroupStopped) {
+                try {
+                    await rm(root, { recursive: true, force: true });
+                } catch {
+                    cleanupFailureStage ??= 'temporary_profile_cleanup_failure';
+                }
+            } else {
+                cleanupFailureStage ??= 'temporary_profile_retained_for_active_browser';
+            }
         }
+    }
+
+    if (rendererTimedOut) {
+        failureStage = 'renderer_timeout';
+        throw new Error('Renderer timed out');
+    }
+
+    if (cleanupFailureStage !== undefined) {
+        failureStage = 'renderer_cleanup_failure';
+        throw new Error('Renderer cleanup failed');
+    }
+
+    if (sessionDeletionFailed) {
+        process.stderr.write('EXPORT_RENDERER_CLEANUP_WARNING:webdriver_session_cleanup_failure');
+    }
+
+    if (documentTooTall) {
+        fail(42);
     }
 }
 
-main().catch(() => fail());
+main().catch(() => {
+    if (rendererTimedOut) {
+        failureStage = 'renderer_timeout';
+    }
+
+    fail();
+});

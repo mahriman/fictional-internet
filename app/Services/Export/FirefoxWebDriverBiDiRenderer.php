@@ -25,6 +25,15 @@ class FirefoxWebDriverBiDiRenderer implements ContentDocumentRenderer
         $script = app_path('Services/Export/render-document.mjs');
 
         if ($node === null || $geckoDriver === null || $firefox === null || ! is_file($script)) {
+            Log::warning('Content export renderer dependency is unavailable.', [
+                'failure_stage' => 'renderer_dependency_missing',
+                'node_available' => $node !== null,
+                'geckodriver_available' => $geckoDriver !== null,
+                'firefox_available' => $firefox !== null,
+                'worker_available' => is_file($script),
+                'format' => $format->value,
+            ]);
+
             throw new ContentExportException('PDF and PNG export requires Node.js, Firefox and geckodriver on the application server.');
         }
 
@@ -35,7 +44,8 @@ class FirefoxWebDriverBiDiRenderer implements ContentDocumentRenderer
 
         $process = new Process([$node, $script], base_path(), $environment);
         try {
-            $process->setTimeout(60);
+            // Leave bounded room for the worker watchdog and browser cleanup.
+            $process->setTimeout(75);
             $process->setInput(json_encode([
                 'format' => $format->value,
                 'html' => $html,
@@ -53,6 +63,13 @@ class FirefoxWebDriverBiDiRenderer implements ContentDocumentRenderer
             throw new ContentExportException('The document could not be rendered. Please try the export again.');
         }
 
+        if (preg_match('/\AEXPORT_RENDERER_CLEANUP_WARNING:([a-z0-9_]+)\z/', trim($process->getErrorOutput()), $matches) === 1) {
+            Log::warning('Content export completed after WebDriver cleanup fallback.', [
+                'failure_stage' => $matches[1],
+                'format' => $format->value,
+            ]);
+        }
+
         if ($process->getExitCode() === 42) {
             throw new ContentExportException(
                 'This document is too tall to export as one PNG. Download a PDF to preserve the complete document.',
@@ -62,15 +79,22 @@ class FirefoxWebDriverBiDiRenderer implements ContentDocumentRenderer
 
         if (! $process->isSuccessful()) {
             $errorOutput = trim($process->getErrorOutput());
-            $failureStage = preg_match('/\AEXPORT_RENDERER_FAILED:([a-z0-9_]+)\z/', $errorOutput, $matches) === 1
+            $hasDiagnostic = preg_match('/\AEXPORT_RENDERER_FAILED:([a-z0-9_]+)(?:\nEXPORT_RENDERER_CLEANUP_FAILED:([a-z0-9_]+))?\z/', $errorOutput, $matches) === 1;
+            $failureStage = $hasDiagnostic
                 ? $matches[1]
                 : 'unknown_renderer_failure';
 
-            Log::warning('Content export renderer returned an unsuccessful result.', [
+            $diagnostics = [
                 'failure_stage' => $failureStage,
                 'exit_code' => $process->getExitCode(),
                 'format' => $format->value,
-            ]);
+            ];
+
+            if ($hasDiagnostic && isset($matches[2]) && $matches[2] !== '') {
+                $diagnostics['cleanup_failure_stage'] = $matches[2];
+            }
+
+            Log::warning('Content export renderer returned an unsuccessful result.', $diagnostics);
 
             throw new ContentExportException('The document could not be rendered. Please try the export again.');
         }
