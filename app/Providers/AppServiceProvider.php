@@ -6,6 +6,8 @@ use App\ContentTypes\ContentTypeRegistry;
 use App\ContentTypes\Definitions\ForumThreadType;
 use App\ContentTypes\Definitions\NewsArticleType;
 use App\ContentTypes\Definitions\SchreckNetThreadType;
+use App\Services\Export\ContentDocumentRenderer;
+use App\Services\Export\FirefoxWebDriverBiDiRenderer;
 use App\Services\OpenAI\OpenAiClient;
 use Illuminate\Support\ServiceProvider;
 
@@ -22,6 +24,7 @@ class AppServiceProvider extends ServiceProvider
         );
 
         $this->app->singleton(OpenAiClient::class);
+        $this->app->singleton(ContentDocumentRenderer::class, FirefoxWebDriverBiDiRenderer::class);
     }
 
     /**

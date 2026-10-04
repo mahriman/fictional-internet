@@ -4,6 +4,7 @@ use App\Http\Controllers\AccountSettingsController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\GeneratedContentController;
+use App\Http\Controllers\GeneratedContentExportController;
 use App\Http\Controllers\ProjectContextController;
 use App\Http\Controllers\ProjectController;
 use Illuminate\Support\Facades\Route;
@@ -45,6 +46,14 @@ Route::middleware('auth')->group(function () {
         ->where('versionNumber', '[1-9][0-9]*')
         ->scopeBindings()
         ->name('projects.generated-content.versions.show');
+    Route::get('/projects/{project}/generated-content/{generatedContent}/export/{format}', [GeneratedContentExportController::class, 'latest'])
+        ->where('format', 'html|pdf|png')
+        ->scopeBindings()
+        ->name('projects.generated-content.export');
+    Route::get('/projects/{project}/generated-content/{generatedContent}/versions/{versionNumber}/export/{format}', [GeneratedContentExportController::class, 'version'])
+        ->where(['versionNumber' => '[1-9][0-9]*', 'format' => 'html|pdf|png'])
+        ->scopeBindings()
+        ->name('projects.generated-content.versions.export');
     Route::get('/projects/{project}/generated-content/{generatedContent}/versions/{versionNumber}/edit', [GeneratedContentController::class, 'editVersion'])
         ->where('versionNumber', '[1-9][0-9]*')
         ->scopeBindings()

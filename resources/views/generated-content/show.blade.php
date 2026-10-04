@@ -20,11 +20,15 @@
                             <span class="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-800">Latest version</span>
                         @endif
                     </div>
-                    @if ($editingView !== null)
-                        <a href="{{ route('projects.generated-content.versions.edit', [$project, $generatedContent, $version->version_number]) }}" class="inline-flex justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Edit this version</a>
-                    @else
-                        <p class="text-sm text-slate-500">A dedicated editor is unavailable for this content type.</p>
-                    @endif
+                    <div class="flex flex-wrap gap-2">
+                        <a href="{{ route('projects.generated-content.versions.export', [$project, $generatedContent, $version->version_number, 'pdf']) }}" class="inline-flex justify-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Download PDF</a>
+                        <a href="{{ route('projects.generated-content.versions.export', [$project, $generatedContent, $version->version_number, 'png']) }}" class="inline-flex justify-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Download PNG</a>
+                        @if ($editingView !== null)
+                            <a href="{{ route('projects.generated-content.versions.edit', [$project, $generatedContent, $version->version_number]) }}" class="inline-flex justify-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Edit this version</a>
+                        @else
+                            <p class="self-center text-sm text-slate-500">A dedicated editor is unavailable for this content type.</p>
+                        @endif
+                    </div>
                 </div>
             </header>
 
