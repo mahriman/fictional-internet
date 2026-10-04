@@ -8,6 +8,7 @@ use App\Exceptions\ContentExportException;
 use App\Models\GeneratedContent;
 use App\Services\Export\ContentDocumentRenderer;
 use App\Services\Export\ContentExportDocument;
+use App\Services\Export\ExportRenderLimiter;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
 
@@ -16,6 +17,7 @@ class ExportGeneratedContent
     public function __construct(
         private ContentTypeRegistry $contentTypes,
         private ContentDocumentRenderer $renderer,
+        private ExportRenderLimiter $renderLimiter,
     ) {}
 
     public function handle(
@@ -57,9 +59,11 @@ class ExportGeneratedContent
             );
         }
 
-        $body = $format === ContentExportFormat::Html
-            ? $html
-            : $this->renderer->render($html, $format);
+        if ($format === ContentExportFormat::Html) {
+            $body = $html;
+        } else {
+            $body = $this->renderLimiter->run(fn (): string => $this->renderer->render($html, $format));
+        }
 
         $contentType = Str::limit(preg_replace('/[^a-z0-9-]+/', '-', Str::lower($generatedContent->content_type)) ?: 'content', 48, '');
         $contentUuid = is_string($generatedContent->uuid) && preg_match('/^[0-9a-f-]{36}$/i', $generatedContent->uuid) === 1

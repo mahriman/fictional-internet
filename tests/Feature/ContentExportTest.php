@@ -7,7 +7,9 @@ use App\Models\GeneratedContentVersion;
 use App\Models\Project;
 use App\Models\User;
 use App\Services\Export\ContentDocumentRenderer;
+use App\Services\Export\ExportRenderLimiter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Http;
 
 uses(RefreshDatabase::class);
@@ -306,11 +308,57 @@ test('a safe renderer failure does not disclose its implementation details', fun
     $renderer = Mockery::mock(ContentDocumentRenderer::class);
     $renderer->shouldReceive('render')->once()->andThrow(new ContentExportException('The document could not be rendered. Please try the export again.'));
     $this->app->instance(ContentDocumentRenderer::class, $renderer);
+    $lockDirectory = sys_get_temp_dir().'/fictional-internet-export-lock-'.bin2hex(random_bytes(8));
+    $limiter = new ExportRenderLimiter(1, $lockDirectory);
+    $this->app->instance(ExportRenderLimiter::class, $limiter);
 
-    $response = $this->actingAs($project->user)->get(contentExportUrl($project, $content, 'pdf'));
+    try {
+        $response = $this->actingAs($project->user)->get(contentExportUrl($project, $content, 'pdf'));
 
-    $response->assertServiceUnavailable()->assertSee('The document could not be rendered. Please try the export again.');
-    Http::assertNothingSent();
+        $response->assertServiceUnavailable()->assertSee('The document could not be rendered. Please try the export again.');
+        $slot = $limiter->acquire();
+
+        expect($slot)->not->toBeNull();
+        $slot?->release();
+        Http::assertNothingSent();
+    } finally {
+        File::deleteDirectory($lockDirectory);
+    }
+});
+
+test('html bypasses render slots while pdf and png share busy capacity feedback', function () {
+    $project = Project::factory()->create();
+    $content = GeneratedContent::factory()->for($project)->create();
+    GeneratedContentVersion::factory()->for($content)->create();
+    $renderer = Mockery::mock(ContentDocumentRenderer::class);
+    $renderer->shouldNotReceive('render');
+    $this->app->instance(ContentDocumentRenderer::class, $renderer);
+    $lockDirectory = sys_get_temp_dir().'/fictional-internet-export-lock-'.bin2hex(random_bytes(8));
+    $limiter = new ExportRenderLimiter(1, $lockDirectory);
+    $heldSlot = $limiter->acquire();
+    $this->app->instance(ExportRenderLimiter::class, $limiter);
+
+    try {
+        $this->actingAs($project->user)
+            ->get(contentExportUrl($project, $content, 'html'))
+            ->assertOk();
+
+        $this->get(contentExportUrl($project, $content, 'pdf'))
+            ->assertServiceUnavailable()
+            ->assertHeader('Retry-After', '10')
+            ->assertSee('Export capacity is temporarily busy. Please try again shortly.')
+            ->assertDontSee($lockDirectory);
+
+        $this->get(contentExportUrl($project, $content, 'png'))
+            ->assertServiceUnavailable()
+            ->assertHeader('Retry-After', '10')
+            ->assertSee('Export capacity is temporarily busy. Please try again shortly.');
+
+        Http::assertNothingSent();
+    } finally {
+        $heldSlot?->release();
+        File::deleteDirectory($lockDirectory);
+    }
 });
 
 /**

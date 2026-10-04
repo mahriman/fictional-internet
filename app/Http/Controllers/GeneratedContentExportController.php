@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Actions\ExportGeneratedContent;
 use App\Enums\ContentExportFormat;
 use App\Exceptions\ContentExportException;
+use App\Exceptions\ExportRenderCapacityException;
 use App\Models\GeneratedContent;
 use App\Models\Project;
 use Illuminate\Support\Facades\Gate;
@@ -44,6 +45,11 @@ class GeneratedContentExportController extends Controller
 
         try {
             $document = $export->handle($generatedContent, $versionNumber, $exportFormat);
+        } catch (ExportRenderCapacityException $exception) {
+            return response()->view('generated-content.export-error', [
+                'project' => $project,
+                'message' => $exception->getMessage(),
+            ], $exception->httpStatus)->header('Retry-After', (string) $exception->retryAfterSeconds());
         } catch (ContentExportException $exception) {
             return response()->view('generated-content.export-error', [
                 'project' => $project,
