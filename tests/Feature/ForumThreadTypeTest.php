@@ -93,7 +93,7 @@ test('forum thread is registered alongside news article and exposes its complete
         ->and($definition->promptInstructions())->toContain('numeric timezone offset')
         ->and($definition->promptInstructions())->toContain('exact, contiguous passage')
         ->and($definition->titleFromContent(validForumThread()))->toBe('Unusual lights over the inlet')
-        ->and(array_keys(app(ContentTypeRegistry::class)->all()))->toBe(['news_article', 'forum_thread'])
+        ->and(array_keys(app(ContentTypeRegistry::class)->all()))->toBe(['news_article', 'forum_thread', 'schrecknet_thread'])
         ->and($schema['additionalProperties'])->toBeFalse()
         ->and($schema['required'])->toBe(['forum_name', 'thread_title', 'category', 'started_at', 'posts'])
         ->and($schema['properties']['posts']['minItems'])->toBe(1)

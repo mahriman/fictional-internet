@@ -3,13 +3,13 @@
 namespace App\ContentTypes\Definitions;
 
 use App\ContentTypes\Contracts\ContentTypeDefinition;
-use DateTimeImmutable;
+use App\ContentTypes\DiscussionSemantics;
 
 class ForumThreadType implements ContentTypeDefinition
 {
     public const MAX_POSTS = 20;
 
-    public const TIMESTAMP_FORMAT = 'Y-m-d\\TH:i:sP';
+    public const TIMESTAMP_FORMAT = DiscussionSemantics::TIMESTAMP_FORMAT;
 
     public function key(): string
     {
@@ -122,82 +122,18 @@ INSTRUCTIONS;
 
     public function semanticValidationErrors(array $content): array
     {
-        $errors = [];
-        $startedAt = $this->parseTimestamp($content['started_at'] ?? null);
-        $previousPostAt = null;
-        $posts = is_array($content['posts'] ?? null) ? array_values($content['posts']) : [];
-
-        if ($startedAt === null) {
-            $errors['started_at'][] = 'The thread start time must use a valid timestamp with a numeric timezone offset.';
-        }
-
-        foreach ($posts as $index => $post) {
-            if (! is_array($post)) {
-                continue;
-            }
-
-            if (($post['post_number'] ?? null) !== $index + 1) {
-                $errors["posts.{$index}.post_number"][] = 'Post numbers must start at 1 and increase by one in displayed order.';
-            }
-
-            $postNumber = $post['post_number'] ?? null;
-            $replyTarget = $post['reply_to_post_number'] ?? null;
-
-            if ($replyTarget !== null && (! is_int($replyTarget) || ! is_int($postNumber) || $replyTarget < 1 || $replyTarget >= $postNumber)) {
-                $errors["posts.{$index}.reply_to_post_number"][] = 'A reply must refer to an earlier post in this thread.';
-            }
-
-            $quote = $post['quote'] ?? null;
-
-            if ($quote !== null) {
-                if (! is_array($quote) || array_diff(array_keys($quote), ['post_number', 'text']) !== []) {
-                    $errors["posts.{$index}.quote"][] = 'The quote must contain only a source post number and exact quoted text.';
-                } else {
-                    $quoteTarget = $quote['post_number'] ?? null;
-                    $quoteText = $quote['text'] ?? null;
-
-                    if (! is_int($quoteTarget) || ! is_int($postNumber) || $quoteTarget < 1 || $quoteTarget >= $postNumber) {
-                        $errors["posts.{$index}.quote.post_number"][] = 'A quote must refer to an earlier post in this thread.';
-                    } elseif (! is_string($quoteText) || preg_match('/\A\s*\z/u', $quoteText) === 1) {
-                        $errors["posts.{$index}.quote.text"][] = 'Quoted text must be non-empty.';
-                    } else {
-                        $sourceBody = $posts[$quoteTarget - 1]['body'] ?? null;
-
-                        if (! is_string($sourceBody) || mb_strpos($sourceBody, $quoteText, 0, 'UTF-8') === false) {
-                            $errors["posts.{$index}.quote.text"][] = 'Quoted text must exactly match a contiguous part of the referenced post.';
-                        }
-                    }
-                }
-            }
-
-            if ($index === 0 && $replyTarget !== null) {
-                $errors["posts.{$index}.reply_to_post_number"][] = 'The opening post cannot reply to another post.';
-            }
-
-            if ($index === 0 && $quote !== null) {
-                $errors["posts.{$index}.quote"][] = 'The opening post cannot reply to or quote another post.';
-            }
-
-            $postedAt = $this->parseTimestamp($post['posted_at'] ?? null);
-
-            if ($postedAt === null) {
-                $errors["posts.{$index}.posted_at"][] = 'The post time must use a valid timestamp with a numeric timezone offset.';
-
-                continue;
-            }
-
-            if ($index === 0 && $startedAt !== null && $postedAt < $startedAt) {
-                $errors["posts.{$index}.posted_at"][] = 'The opening post cannot be earlier than the thread start.';
-            }
-
-            if ($previousPostAt !== null && $postedAt < $previousPostAt) {
-                $errors["posts.{$index}.posted_at"][] = 'Posts must be in chronological order.';
-            }
-
-            $previousPostAt = $postedAt;
-        }
-
-        return $errors;
+        return DiscussionSemantics::validationErrors($content, [
+            'collection' => 'posts',
+            'number' => 'post_number',
+            'timestamp' => 'posted_at',
+            'body' => 'body',
+            'reply' => 'reply_to_post_number',
+            'quote' => 'quote',
+            'quote_number' => 'post_number',
+            'quote_text' => 'text',
+            'start' => 'started_at',
+            'label' => 'post',
+        ]);
     }
 
     public function editingValidationRules(array $sourceContent): array
@@ -232,10 +168,10 @@ INSTRUCTIONS;
             }
 
             $post['post_number'] = $sourcePosts[$index]['post_number'] ?? null;
-            $post['reply_to_post_number'] = $this->normalizePostNumber($post['reply_to_post_number'] ?? null);
+            $post['reply_to_post_number'] = DiscussionSemantics::normalizeNullableNumber($post['reply_to_post_number'] ?? null);
 
             $quote = $post['quote'] ?? null;
-            $quoteTarget = is_array($quote) ? $this->normalizePostNumber($quote['post_number'] ?? null) : null;
+            $quoteTarget = is_array($quote) ? DiscussionSemantics::normalizeNullableNumber($quote['post_number'] ?? null) : null;
             $quoteText = is_array($quote) && is_string($quote['text'] ?? null) ? $quote['text'] : null;
             $post['quote'] = $quoteTarget === null && ($quoteText === null || $quoteText === '')
                 ? null
@@ -246,39 +182,5 @@ INSTRUCTIONS;
         $submittedContent['posts'] = $editedPosts;
 
         return $submittedContent;
-    }
-
-    private function normalizePostNumber(mixed $postNumber): mixed
-    {
-        if ($postNumber === null || $postNumber === '') {
-            return null;
-        }
-
-        if (is_int($postNumber)) {
-            return $postNumber;
-        }
-
-        if (is_string($postNumber) && preg_match('/\A-?\d+\z/', $postNumber) === 1) {
-            return (int) $postNumber;
-        }
-
-        return $postNumber;
-    }
-
-    private function parseTimestamp(mixed $value): ?DateTimeImmutable
-    {
-        if (! is_string($value)
-            || preg_match('/\A\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}[+-](?:[01]\d|2[0-3]):[0-5]\d\z/', $value) !== 1) {
-            return null;
-        }
-
-        $date = DateTimeImmutable::createFromFormat('!'.self::TIMESTAMP_FORMAT, $value);
-        $errors = DateTimeImmutable::getLastErrors();
-
-        if ($date === false || ($errors !== false && ($errors['warning_count'] > 0 || $errors['error_count'] > 0))) {
-            return null;
-        }
-
-        return $date;
     }
 }
