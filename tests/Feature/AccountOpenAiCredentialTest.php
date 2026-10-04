@@ -30,6 +30,7 @@ test('users can save a trimmed personal key encrypted and hidden from serializat
     $this->get(route('account.settings'))
         ->assertOk()
         ->assertSee('A personal key is configured.')
+        ->assertSee('does not use a shared server key as a fallback.')
         ->assertSee('name="api_key"', false)
         ->assertSee('type="password"', false)
         ->assertSee('autocomplete="new-password"', false)
@@ -51,6 +52,7 @@ test('guests are redirected and authenticated users can only manage their own ke
         ->get(route('account.settings'))
         ->assertOk()
         ->assertSee('No personal key is configured.')
+        ->assertSee('does not use a shared server key as a fallback.')
         ->assertDontSee('owner-test-secret');
 
     $this->put(route('account.settings.openai-credential.store'), [

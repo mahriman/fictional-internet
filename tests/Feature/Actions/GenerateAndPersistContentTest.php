@@ -50,7 +50,7 @@ test('generation is persisted as the first immutable ai generated version', func
     Http::fake(function (Request $request) use ($baselineTransactionLevel, $project, $prompt): PromiseInterface {
         expect(DB::transactionLevel())->toBe($baselineTransactionLevel)
             ->and($project->generatedContents()->count())->toBe(0)
-            ->and($request->hasHeader('Authorization', 'Bearer configured-test-key'))->toBeTrue()
+            ->and($request->hasHeader('Authorization', 'Bearer action-test-key'))->toBeTrue()
             ->and($request['instructions'])->toBe(app(ContentTypeRegistry::class)->get('news_article')->promptInstructions())
             ->and($request['input'])->toBe($prompt);
 
@@ -78,7 +78,7 @@ test('generation is persisted as the first immutable ai generated version', func
         ]);
     });
 
-    $result = app(GenerateAndPersistContent::class)->handle($project, 'news_article', $prompt);
+    $result = app(GenerateAndPersistContent::class)->handle($project, 'news_article', $prompt, 'action-test-key');
 
     expect($result)->toBeInstanceOf(GeneratedContentGenerationResult::class)
         ->and($result->generatedContent->project->is($project))->toBeTrue()
@@ -114,7 +114,7 @@ test('generation is persisted as the first immutable ai generated version', func
         'total_tokens' => 200,
         'content_type' => 'news_article',
     ]))->and($result->generationMetadata)->toBe($result->version->generation_metadata)
-        ->and($persistedInputs)->not->toContain('configured-test-key');
+        ->and($persistedInputs)->not->toContain('action-test-key');
 });
 
 test('generation uses and snapshots one captured project context for later manual edits', function () {
@@ -138,7 +138,7 @@ test('generation uses and snapshots one captured project context for later manua
 
         expect($request['instructions'])->toBe(app(ContentTypeRegistry::class)->get('news_article')->promptInstructions())
             ->and($request['input'])->toBe($expectedInput)
-            ->and($request['input'])->not->toContain('configured-test-key');
+            ->and($request['input'])->not->toContain('action-test-key');
 
         return Http::response([
             'id' => 'resp_project_context',
@@ -159,7 +159,7 @@ test('generation uses and snapshots one captured project context for later manua
         ]);
     });
 
-    $result = app(GenerateAndPersistContent::class)->handle($project, 'news_article', $prompt);
+    $result = app(GenerateAndPersistContent::class)->handle($project, 'news_article', $prompt, 'action-test-key');
     $expectedSnapshot = [
         'content_type' => 'news_article',
         'prompt' => $prompt,
@@ -215,7 +215,7 @@ test('an entirely empty project context preserves the original provider input', 
         ]),
     ]);
 
-    app(GenerateAndPersistContent::class)->handle($project, 'news_article', $prompt);
+    app(GenerateAndPersistContent::class)->handle($project, 'news_article', $prompt, 'action-test-key');
 
     Http::assertSent(fn (Request $request): bool => $request['input'] === $prompt);
 
@@ -304,7 +304,7 @@ test('a content type may omit its generated content title', function () {
         ]),
     ]);
 
-    $result = app(GenerateAndPersistContent::class)->handle($project, 'untitled_content', 'Write content.');
+    $result = app(GenerateAndPersistContent::class)->handle($project, 'untitled_content', 'Write content.', 'action-test-key');
 
     expect($result->generatedContent->title)->toBeNull()
         ->and($result->version->fresh()->content)->toBe(['body' => 'Generated body.']);
@@ -333,7 +333,7 @@ test('generation metadata stores null for unavailable token usage', function () 
         ]),
     ]);
 
-    $result = app(GenerateAndPersistContent::class)->handle($project, 'news_article', 'Write an article.');
+    $result = app(GenerateAndPersistContent::class)->handle($project, 'news_article', 'Write an article.', 'action-test-key');
 
     expect($result->generationMetadata)->toMatchArray([
         'input_tokens' => null,
@@ -395,7 +395,7 @@ test('provider failure creates no content or version', function () {
         'https://api.openai.com/v1/responses' => Http::response(['error' => ['message' => 'unavailable']], 503),
     ]);
 
-    expect(fn () => app(GenerateAndPersistContent::class)->handle($project, 'news_article', 'Write something.'))
+    expect(fn () => app(GenerateAndPersistContent::class)->handle($project, 'news_article', 'Write something.', 'action-test-key'))
         ->toThrow(OpenAiException::class, 'The OpenAI request failed with HTTP status 503.');
 
     expect($project->generatedContents()->count())->toBe(0)
@@ -420,7 +420,7 @@ test('structured validation failure creates no content or version', function () 
         ]),
     ]);
 
-    expect(fn () => app(GenerateAndPersistContent::class)->handle($project, 'news_article', 'Write something.'))
+    expect(fn () => app(GenerateAndPersistContent::class)->handle($project, 'news_article', 'Write something.', 'action-test-key'))
         ->toThrow(StructuredContentGenerationException::class, 'The generated content failed validation.');
 
     expect($project->generatedContents()->count())->toBe(0)
@@ -469,7 +469,7 @@ test('version persistence failure after content creation rolls back both records
         }
     });
 
-    expect(fn () => app(GenerateAndPersistContent::class)->handle($project, 'news_article', 'Write something.'))
+    expect(fn () => app(GenerateAndPersistContent::class)->handle($project, 'news_article', 'Write something.', 'action-test-key'))
         ->toThrow(RuntimeException::class, 'Simulated version persistence failure.');
 
     expect($generatedContentExistedBeforeVersionInsert)->toBeTrue()

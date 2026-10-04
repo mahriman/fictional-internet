@@ -58,6 +58,7 @@ class GeneratedContentController extends Controller
             'project' => $project,
             'contentTypes' => $contentTypes->all(),
             'generatedContents' => $generatedContents,
+            'hasPersonalKey' => $user->openAiCredential()->exists(),
             'attemptToken' => $attempts->tokenForForm(
                 $user,
                 $project,
@@ -90,6 +91,21 @@ class GeneratedContentController extends Controller
                 $exception->errors(),
                 includeAttemptToken: true,
             );
+        }
+
+        $apiKey = null;
+
+        if ($attempts->isIssuedFor($user, $project, $request->validated('attempt_token'))) {
+            try {
+                $apiKey = $credentialResolver->forUser($user);
+            } catch (OpenAiCredentialException $exception) {
+                return $this->generationFormRedirect(
+                    $request,
+                    $project,
+                    ['credentials' => $exception->getMessage()],
+                    includeAttemptToken: true,
+                );
+            }
         }
 
         try {
@@ -126,18 +142,6 @@ class GeneratedContentController extends Controller
             };
 
             return $this->generationFormRedirect($request, $project, $message, includeAttemptToken: false);
-        }
-
-        try {
-            $apiKey = $credentialResolver->forUser($user);
-        } catch (OpenAiCredentialException $exception) {
-            $this->markAttemptFailed($attempts, $attempt);
-
-            return $this->generationFormRedirect(
-                $request,
-                $project,
-                ['credentials' => $exception->getMessage()],
-            );
         }
 
         try {
@@ -237,8 +241,8 @@ class GeneratedContentController extends Controller
     private function openAiFailureMessage(OpenAiException $exception): string
     {
         return match ($exception->failureKind) {
-            OpenAiFailureKind::Authentication => 'OpenAI rejected the API key used for this request. Check a personal key in Account settings, or ask an administrator to review the server fallback.',
-            OpenAiFailureKind::Authorization => 'OpenAI denied access for the API key used for this request. Check personal-key permissions in Account settings, or ask an administrator to review the server fallback.',
+            OpenAiFailureKind::Authentication => 'OpenAI rejected your personal API key. Check or replace it in Account settings.',
+            OpenAiFailureKind::Authorization => 'OpenAI denied access for your personal API key. Check its permissions or replace it in Account settings.',
             OpenAiFailureKind::RateLimited => 'OpenAI is temporarily limiting requests. Please try again later.',
             OpenAiFailureKind::Network => 'We could not confirm whether OpenAI completed the request because of a connection problem or timeout. Submit again to start a new attempt if needed.',
             OpenAiFailureKind::TemporaryProvider => 'OpenAI is temporarily unavailable. Please try again later.',

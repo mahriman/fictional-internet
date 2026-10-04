@@ -10,6 +10,12 @@
             <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Generate content</h1>
             <p class="mt-2 text-sm leading-6 text-slate-600">Choose a format and describe what you want to create. Generation can take some time; keep this page open while it runs.</p>
 
+            @if (! $hasPersonalKey)
+                <p role="status" class="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
+                    A personal OpenAI API key is required before you can generate content. Add one in <a href="{{ route('account.settings') }}" class="font-semibold underline underline-offset-2">Account settings</a>. The application will not use a shared server key.
+                </p>
+            @endif
+
             @error('credentials')
                 <p role="alert" class="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">
                     {{ $message }} <a href="{{ route('account.settings') }}" class="font-semibold underline underline-offset-2">Open Account settings</a>.
@@ -86,7 +92,11 @@
                     <a href="{{ route('projects.show', $project) }}" class="rounded-lg border border-slate-300 px-4 py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Cancel</a>
                     <div class="flex flex-col items-stretch gap-3 sm:items-end">
                         <p id="generation-progress" class="text-sm text-slate-600" data-generation-status role="status" aria-live="polite" aria-atomic="true" hidden>Generating your content. This can take some time. Please keep this page open…</p>
-                        <button type="submit" data-generation-submit class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700 disabled:cursor-wait disabled:opacity-70">Generate content</button>
+                        @if ($hasPersonalKey)
+                            <button type="submit" data-generation-submit class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700 disabled:cursor-wait disabled:opacity-70">Generate content</button>
+                        @else
+                            <button type="button" disabled class="rounded-lg bg-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-600 disabled:cursor-not-allowed">Add a personal key to generate</button>
+                        @endif
                     </div>
                 </div>
             </form>

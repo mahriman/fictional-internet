@@ -14,7 +14,7 @@ beforeEach(function () {
     config()->set('services.openai.timeout', 30);
 });
 
-test('a non-streaming response request uses the configured model and server authentication', function () {
+test('a non-streaming response request uses the configured model and explicitly supplied authentication', function () {
     Http::fake([
         'https://api.openai.com/v1/responses' => Http::response([
             'id' => 'resp_test_123',
@@ -49,7 +49,7 @@ test('a non-streaming response request uses the configured model and server auth
         ]),
     ]);
 
-    $result = app(OpenAiClient::class)->createResponse('Follow these instructions.', 'Use this input.');
+    $result = app(OpenAiClient::class)->createResponse('Follow these instructions.', 'Use this input.', 'test-api-key');
 
     Http::assertSent(function (Request $request): bool {
         return $request->url() === 'https://api.openai.com/v1/responses'
@@ -102,21 +102,21 @@ test('token usage fields may be absent', function () {
         ]),
     ]);
 
-    $result = app(OpenAiClient::class)->createResponse('Instructions.', 'Input.');
+    $result = app(OpenAiClient::class)->createResponse('Instructions.', 'Input.', 'test-api-key');
 
     expect($result->inputTokens)->toBeNull()
         ->and($result->outputTokens)->toBeNull()
         ->and($result->totalTokens)->toBeNull();
 });
 
-test('a missing api key is rejected before sending a request', function () {
-    config()->set('services.openai.api_key', '');
+test('a configured legacy server key is never used when no api key is supplied', function (?string $apiKey) {
+    config()->set('services.openai.api_key', 'legacy-server-key-must-not-be-used');
 
-    expect(fn () => app(OpenAiClient::class)->createResponse('Instructions.', 'Input.'))
-        ->toThrow(OpenAiException::class, 'The OpenAI API key is not configured.');
+    expect(fn () => app(OpenAiClient::class)->createResponse('Instructions.', 'Input.', $apiKey))
+        ->toThrow(OpenAiException::class, 'An OpenAI API key must be supplied for this request.');
 
     Http::assertNothingSent();
-});
+})->with([null, '', '   ']);
 
 test('empty instructions or input are rejected before sending a request', function (string $instructions, string $input) {
     expect(fn () => app(OpenAiClient::class)->createResponse($instructions, $input))
@@ -136,7 +136,7 @@ test('authentication, rate limit, and server errors do not expose response bodie
     ]);
 
     try {
-        app(OpenAiClient::class)->createResponse('Instructions.', 'Input.');
+        app(OpenAiClient::class)->createResponse('Instructions.', 'Input.', 'test-api-key');
         test()->fail('Expected the OpenAI request to fail.');
     } catch (OpenAiException $exception) {
         expect($exception->statusCode)->toBe($statusCode)
@@ -162,7 +162,7 @@ test('network errors are wrapped without retrying the request', function () {
         },
     ]);
 
-    expect(fn () => app(OpenAiClient::class)->createResponse('Instructions.', 'Input.'))
+    expect(fn () => app(OpenAiClient::class)->createResponse('Instructions.', 'Input.', 'test-api-key'))
         ->toThrow(OpenAiException::class, 'The OpenAI request failed due to a network error.');
 
     expect($attempts)->toBe(1);
@@ -177,7 +177,7 @@ test('incomplete responses are rejected', function () {
         ]),
     ]);
 
-    expect(fn () => app(OpenAiClient::class)->createResponse('Instructions.', 'Input.'))
+    expect(fn () => app(OpenAiClient::class)->createResponse('Instructions.', 'Input.', 'test-api-key'))
         ->toThrow(OpenAiException::class, 'The OpenAI response was incomplete.');
 });
 
@@ -197,7 +197,7 @@ test('provider refusals are rejected without exposing refusal text', function ()
         ]),
     ]);
 
-    expect(fn () => app(OpenAiClient::class)->createResponse('Instructions.', 'Input.'))
+    expect(fn () => app(OpenAiClient::class)->createResponse('Instructions.', 'Input.', 'test-api-key'))
         ->toThrow(OpenAiException::class, 'The OpenAI response was refused.');
 });
 
@@ -214,7 +214,7 @@ test('empty output text is rejected', function (string $text) {
         ]),
     ]);
 
-    expect(fn () => app(OpenAiClient::class)->createResponse('Instructions.', 'Input.'))
+    expect(fn () => app(OpenAiClient::class)->createResponse('Instructions.', 'Input.', 'test-api-key'))
         ->toThrow(OpenAiException::class, 'The OpenAI response did not contain generated text.');
 })->with([
     'empty string' => '',
@@ -226,7 +226,7 @@ test('malformed response bodies are rejected', function (mixed $body) {
         'https://api.openai.com/v1/responses' => Http::response($body, 200, ['Content-Type' => 'application/json']),
     ]);
 
-    expect(fn () => app(OpenAiClient::class)->createResponse('Instructions.', 'Input.'))
+    expect(fn () => app(OpenAiClient::class)->createResponse('Instructions.', 'Input.', 'test-api-key'))
         ->toThrow(OpenAiException::class);
 })->with([
     'invalid json' => 'not-json',

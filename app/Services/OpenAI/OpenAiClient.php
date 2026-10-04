@@ -25,11 +25,9 @@ class OpenAiClient
             throw new InvalidArgumentException('Instructions and input must not be empty.');
         }
 
-        $apiKey ??= config('services.openai.api_key');
-
         if (! is_string($apiKey) || trim($apiKey) === '') {
             throw new OpenAiException(
-                'The OpenAI API key is not configured.',
+                'An OpenAI API key must be supplied for this request.',
                 failureKind: OpenAiFailureKind::Configuration,
             );
         }

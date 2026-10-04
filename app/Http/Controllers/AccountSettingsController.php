@@ -18,10 +18,6 @@ class AccountSettingsController extends Controller
 
         return view('account.settings', [
             'hasPersonalKey' => $user->openAiCredential()->exists(),
-            'serverFallbackEnabled' => filter_var(
-                config('services.openai.allow_server_key_fallback', true),
-                FILTER_VALIDATE_BOOLEAN,
-            ),
         ]);
     }
 

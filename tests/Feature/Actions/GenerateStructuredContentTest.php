@@ -47,13 +47,13 @@ test('registered content is generated as strictly structured and locally validat
         ]),
     ]);
 
-    $result = app(GenerateStructuredContent::class)->handle('news_article', $prompt);
+    $result = app(GenerateStructuredContent::class)->handle('news_article', $prompt, 'structured-test-key');
 
     Http::assertSent(function (Request $request) use ($contentType, $prompt): bool {
         $schema = $contentType->outputSchema();
 
         return $request->url() === 'https://api.openai.com/v1/responses'
-            && $request->hasHeader('Authorization', 'Bearer configured-test-key')
+            && $request->hasHeader('Authorization', 'Bearer structured-test-key')
             && $request['instructions'] === $contentType->promptInstructions()
             && $request['input'] === $prompt
             && $request['instructions'] !== $prompt
@@ -139,7 +139,7 @@ test('malformed generated json is rejected without exposing the response text', 
     ]);
 
     try {
-        app(GenerateStructuredContent::class)->handle('news_article', 'PRIVATE PROMPT');
+        app(GenerateStructuredContent::class)->handle('news_article', 'PRIVATE PROMPT', 'structured-test-key');
         test()->fail('Malformed JSON should be rejected.');
     } catch (StructuredContentGenerationException $exception) {
         expect($exception->getMessage())->toBe('The generated response was not valid JSON.')
@@ -162,7 +162,7 @@ test('generated json must have an object root', function (string $json) {
         ]),
     ]);
 
-    expect(fn () => app(GenerateStructuredContent::class)->handle('news_article', 'Write an article.'))
+    expect(fn () => app(GenerateStructuredContent::class)->handle('news_article', 'Write an article.', 'structured-test-key'))
         ->toThrow(StructuredContentGenerationException::class, 'The generated response must be a JSON object.');
 })->with([
     'a list' => '[]',
@@ -185,7 +185,7 @@ test('generated objects are rejected when they fail the content type validation 
         ]),
     ]);
 
-    expect(fn () => app(GenerateStructuredContent::class)->handle('news_article', 'Write an article.'))
+    expect(fn () => app(GenerateStructuredContent::class)->handle('news_article', 'Write an article.', 'structured-test-key'))
         ->toThrow(StructuredContentGenerationException::class, 'The generated content failed validation.');
 })->with([
     'missing required field' => [[
@@ -231,7 +231,7 @@ test('provider refusals and incomplete responses propagate as safe OpenAI errors
         'https://api.openai.com/v1/responses' => Http::response($providerResponse),
     ]);
 
-    expect(fn () => app(GenerateStructuredContent::class)->handle('news_article', 'Write an article.'))
+    expect(fn () => app(GenerateStructuredContent::class)->handle('news_article', 'Write an article.', 'structured-test-key'))
         ->toThrow(OpenAiException::class, $message);
 })->with([
     'provider refusal' => [[

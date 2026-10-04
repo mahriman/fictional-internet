@@ -77,7 +77,7 @@ test('the generation form issues a random opaque attempt token distinct from csr
 test('invalid fields do not claim the attempt and preserve its valid token', function () {
     $project = Project::factory()->create();
     $token = app(GenerationAttemptManager::class)->tokenForForm($project->user, $project, null);
-    Http::fake();
+    Http::fake(['https://api.openai.com/v1/responses' => Http::response(generationAttemptSuccessResponse())]);
 
     $this->actingAs($project->user)
         ->from(route('projects.generated-content.create', $project))
@@ -125,12 +125,12 @@ test('missing and malformed attempt tokens are rejected before credential or pro
     Http::assertNothingSent();
 });
 
-test('missing credentials consume the attempt without requesting the provider or creating content', function () {
+test('missing personal credentials leave the attempt issued until a key is configured', function () {
     $project = Project::factory()->create();
     $token = app(GenerationAttemptManager::class)->tokenForForm($project->user, $project, null);
     config()->set('services.openai.allow_server_key_fallback', false);
     config()->set('services.openai.api_key', null);
-    Http::fake();
+    Http::fake(['https://api.openai.com/v1/responses' => Http::response(generationAttemptSuccessResponse())]);
 
     $this->actingAs($project->user)
         ->from(route('projects.generated-content.create', $project))
@@ -141,12 +141,24 @@ test('missing credentials consume the attempt without requesting the provider or
         ])
         ->assertRedirect(route('projects.generated-content.create', $project))
         ->assertSessionHasErrors('credentials')
-        ->assertSessionMissing('_old_input.attempt_token')
+        ->assertSessionHas('_old_input.attempt_token', $token)
         ->assertSessionHas('_old_input.prompt', 'Keep this prompt while I configure a key.');
 
-    expect(GenerationAttempt::query()->sole()->status)->toBe(GenerationAttemptStatus::Failed)
+    expect(GenerationAttempt::query()->sole()->status)->toBe(GenerationAttemptStatus::Issued)
         ->and($project->generatedContents()->exists())->toBeFalse();
     Http::assertNothingSent();
+
+    OpenAiCredential::factory()->for($project->user)->create(['api_key' => 'new-personal-test-key']);
+
+    $this->post(route('projects.generated-content.store', $project), [
+        'attempt_token' => $token,
+        'content_type' => 'news_article',
+        'prompt' => 'Keep this prompt while I configure a key.',
+    ])->assertRedirect();
+
+    expect(GenerationAttempt::query()->sole()->status)->toBe(GenerationAttemptStatus::Completed)
+        ->and($project->generatedContents()->count())->toBe(1);
+    Http::assertSent(fn (Request $request): bool => $request->hasHeader('Authorization', 'Bearer new-personal-test-key'));
 });
 
 test('a completed attempt redirects duplicate submissions to the original content without another provider request', function () {
@@ -155,7 +167,7 @@ test('a completed attempt redirects duplicate submissions to the original conten
     Http::fake(['https://api.openai.com/v1/responses' => Http::response(generationAttemptSuccessResponse())]);
 
     $payload = [
-        ...generationAttemptFields($project, $token),
+        ...personalGenerationAttemptFields($project, $token),
         'content_type' => 'news_article',
         'prompt' => 'Write one article.',
     ];
@@ -214,7 +226,7 @@ test('failed attempts cannot be replayed and a new token permits an explicit ret
         ->push(generationAttemptSuccessResponse());
 
     $failedPayload = [
-        ...generationAttemptFields($project, $failedToken),
+        ...personalGenerationAttemptFields($project, $failedToken),
         'content_type' => 'news_article',
         'prompt' => 'Retain this prompt.',
     ];
@@ -232,7 +244,7 @@ test('failed attempts cannot be replayed and a new token permits an explicit ret
     Http::assertSentCount(1);
 
     $this->post(route('projects.generated-content.store', $project), [
-        ...generationAttemptFields($project, $retryToken),
+        ...personalGenerationAttemptFields($project, $retryToken),
         'content_type' => 'news_article',
         'prompt' => 'Retain this prompt.',
     ])->assertRedirect();
@@ -315,7 +327,7 @@ test('the attempt claim transaction is closed before the provider request', func
 
     $this->actingAs($project->user)
         ->post(route('projects.generated-content.store', $project), [
-            ...generationAttemptFields($project),
+            ...personalGenerationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => 'Check transaction boundaries.',
         ])
@@ -324,7 +336,7 @@ test('the attempt claim transaction is closed before the provider request', func
     expect($completionTransactionLevel)->toBeGreaterThan($baselineTransactionLevel);
 });
 
-test('provider status failures have safe actionable classifications for personal and server keys', function (
+test('provider status failures have safe actionable classifications for personal keys', function (
     int $status,
     string $expectedMessage,
     bool $personalKey,
@@ -343,7 +355,7 @@ test('provider status failures have safe actionable classifications for personal
         ->followingRedirects()
         ->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
-            ...generationAttemptFields($project),
+            ...personalGenerationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => 'Preserve on failure.',
         ])
@@ -356,7 +368,7 @@ test('provider status failures have safe actionable classifications for personal
     expect($project->generatedContents()->exists())->toBeFalse()
         ->and(GeneratedContentVersion::query()->exists())->toBeFalse();
 
-    $expectedKey = $personalKey ? 'personal-attempt-test-key' : 'attempt-server-key';
+    $expectedKey = $personalKey ? 'personal-attempt-test-key' : 'personal-test-openai-key';
     Http::assertSent(fn (Request $request): bool => $request->hasHeader(
         'Authorization',
         'Bearer '.$expectedKey,
@@ -364,8 +376,7 @@ test('provider status failures have safe actionable classifications for personal
 
     Http::assertSentCount(1);
 })->with([
-    'personal 401' => [401, 'API key used for this request', true],
-    'fallback 401' => [401, 'API key used for this request', false],
+    'personal 401' => [401, 'rejected your personal API key', true],
     'personal 403' => [403, 'denied access', true],
     'rate limit' => [429, 'temporarily limiting', false],
     'temporary provider failure' => [503, 'temporarily unavailable', false],
@@ -378,7 +389,7 @@ test('network failures do not expose exception details and require a new attempt
     $this->actingAs($project->user)
         ->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
-            ...generationAttemptFields($project),
+            ...personalGenerationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => 'Retry safely.',
         ])
@@ -399,7 +410,7 @@ test('incomplete and malformed provider responses become safe feedback without r
     $this->actingAs($project->user)
         ->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
-            ...generationAttemptFields($project),
+            ...personalGenerationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => 'Try valid content.',
         ])
@@ -439,7 +450,7 @@ test('reference-size validation happens before claiming so the token remains unc
     $this->actingAs($project->user)
         ->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
-            ...generationAttemptFields($project, $token),
+            ...personalGenerationAttemptFields($project, $token),
             'content_type' => 'news_article',
             'prompt' => 'Keep this prompt.',
             'references' => [$source->uuid.':1'],
@@ -467,7 +478,7 @@ test('version persistence failure rolls back content and leaves the attempt non-
         $this->withoutExceptionHandling()
             ->actingAs($project->user)
             ->post(route('projects.generated-content.store', $project), [
-                ...generationAttemptFields($project, 'a'.str_repeat('b', 63)),
+                ...personalGenerationAttemptFields($project, 'a'.str_repeat('b', 63)),
                 'content_type' => 'news_article',
                 'prompt' => 'Persist atomically.',
             ]);
@@ -484,6 +495,7 @@ test('version persistence failure rolls back content and leaves the attempt non-
 
 test('failure to mark an attempt failed does not replace the original persistence exception', function () {
     $project = Project::factory()->create();
+    OpenAiCredential::factory()->for($project->user)->create(['api_key' => 'attempt-persistence-test-key']);
     $token = app(GenerationAttemptManager::class)->tokenForForm($project->user, $project, null);
     $attempts = Mockery::mock(GenerationAttemptManager::class)->makePartial();
     $attempts->shouldReceive('fail')

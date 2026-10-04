@@ -1,6 +1,7 @@
 <?php
 
 use App\Actions\GenerationAttemptManager;
+use App\Models\OpenAiCredential;
 use App\Models\Project;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -51,8 +52,16 @@ function something()
     // ..
 }
 
-function generationAttemptFields(Project $project, ?string $token = null): array
+function personalGenerationAttemptFields(Project $project, ?string $token = null): array
 {
+    $credential = $project->user->openAiCredential()->first();
+
+    if ($credential === null) {
+        $credential = new OpenAiCredential;
+        $credential->api_key = 'personal-test-openai-key';
+        $project->user->openAiCredential()->save($credential);
+    }
+
     $token = app(GenerationAttemptManager::class)->tokenForForm($project->user, $project, $token);
 
     return ['attempt_token' => $token];

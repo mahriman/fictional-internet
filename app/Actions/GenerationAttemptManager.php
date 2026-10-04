@@ -20,6 +20,16 @@ use LogicException;
  */
 class GenerationAttemptManager
 {
+    public function isIssuedFor(User $user, Project $project, string $token): bool
+    {
+        return GenerationAttempt::query()
+            ->where('token_hash', hash('sha256', $token))
+            ->where('user_id', $user->getKey())
+            ->where('project_id', $project->getKey())
+            ->where('status', GenerationAttemptStatus::Issued->value)
+            ->exists();
+    }
+
     public function tokenForForm(User $user, Project $project, ?string $candidate): string
     {
         if ((int) $project->user_id !== (int) $user->getKey()) {

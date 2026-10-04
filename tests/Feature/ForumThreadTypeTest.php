@@ -11,6 +11,7 @@ use App\Exceptions\StructuredContentGenerationException;
 use App\Models\GeneratedContent;
 use App\Models\GeneratedContentVersion;
 use App\Models\GenerationAttempt;
+use App\Models\OpenAiCredential;
 use App\Models\Project;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
@@ -156,6 +157,7 @@ test('forum threads generate and persist using generic project context and refer
         $project,
         'forum_thread',
         'Write a plausible discussion about the lights.',
+        apiKey: 'forum-direct-test-key',
         references: [$reference->uuid.':'.$referenceVersion->version_number],
     );
 
@@ -191,6 +193,7 @@ test('a legacy forum version remains usable as a version-specific generated-cont
         $project,
         'forum_thread',
         'Write a follow-up forum discussion.',
+        apiKey: 'forum-direct-test-key',
         references: [$source->uuid.':'.$sourceVersion->version_number],
     );
 
@@ -213,6 +216,7 @@ test('thread chronology compares timestamps as instants rather than lexically', 
         Project::factory()->create(),
         'forum_thread',
         'Write a thread with a timezone change.',
+        apiKey: 'forum-direct-test-key',
     );
 
     expect($result->version->fresh()->content['posts'][0]['posted_at'])->toBe('2025-06-15T10:00:00+02:00')
@@ -240,6 +244,7 @@ test('equal post timestamps and the maximum thread size are accepted', function 
         Project::factory()->create(),
         'forum_thread',
         'Write a twenty-post thread.',
+        apiKey: 'forum-direct-test-key',
     );
 
     expect($result->version->fresh()->content['posts'])->toHaveCount(ForumThreadType::MAX_POSTS);
@@ -249,6 +254,7 @@ test('forum thread requests use the existing generation attempt idempotency flow
     $project = Project::factory()->create();
     $user = $project->user;
     $this->actingAs($user);
+    OpenAiCredential::factory()->for($user)->create(['api_key' => 'forum-personal-test-key']);
     config()->set('services.openai.allow_server_key_fallback', true);
     $token = app(GenerationAttemptManager::class)->tokenForForm($user, $project, null);
     $requestFields = [
@@ -277,7 +283,7 @@ test('forum thread generation rejects invalid post numbering and chronology befo
     Http::fake(['https://api.openai.com/v1/responses' => Http::response(fakeForumThreadResponse($thread))]);
     $project = Project::factory()->create();
 
-    expect(fn () => app(GenerateAndPersistContent::class)->handle($project, 'forum_thread', 'Write a forum discussion.'))
+    expect(fn () => app(GenerateAndPersistContent::class)->handle($project, 'forum_thread', 'Write a forum discussion.', 'forum-direct-test-key'))
         ->toThrow(StructuredContentGenerationException::class, 'The generated content failed validation.');
 
     expect($project->generatedContents()->count())->toBe(0)
@@ -334,6 +340,7 @@ test('forum thread generation preserves valid reply-only quote-only and independ
         Project::factory()->create(),
         'forum_thread',
         'Write a conversation with one reply, one quote, and a later reply that quotes a different post.',
+        apiKey: 'forum-direct-test-key',
     );
 
     expect(canonicalizeJsonStructure($result->version->fresh()->content))->toBe(canonicalizeJsonStructure($thread))
@@ -378,7 +385,7 @@ test('forum generation rejects invalid reply and quote references before persist
     Http::fake(['https://api.openai.com/v1/responses' => Http::response(fakeForumThreadResponse($thread))]);
     $project = Project::factory()->create();
 
-    expect(fn () => app(GenerateAndPersistContent::class)->handle($project, 'forum_thread', 'Write a thread.'))
+    expect(fn () => app(GenerateAndPersistContent::class)->handle($project, 'forum_thread', 'Write a thread.', 'forum-direct-test-key'))
         ->toThrow(StructuredContentGenerationException::class, 'The generated content failed validation.');
 
     expect($project->generatedContents()->count())->toBe(0)
@@ -408,7 +415,7 @@ test('semantic quote failures expose only a safe category and field path for dia
     Http::fake(['https://api.openai.com/v1/responses' => Http::response(fakeForumThreadResponse($thread))]);
 
     try {
-        app(GenerateStructuredContent::class)->handle('forum_thread', 'Write a thread with a quotation.');
+        app(GenerateStructuredContent::class)->handle('forum_thread', 'Write a thread with a quotation.', 'forum-test-key');
         test()->fail('A paraphrased quotation should be rejected.');
     } catch (StructuredContentGenerationException $exception) {
         expect($exception->diagnosticCategory)->toBe('semantic_validation')
@@ -424,7 +431,7 @@ test('newly generated forum posts must explicitly contain nullable reply and quo
     Http::fake(['https://api.openai.com/v1/responses' => Http::response(fakeForumThreadResponse($thread))]);
     $project = Project::factory()->create();
 
-    expect(fn () => app(GenerateAndPersistContent::class)->handle($project, 'forum_thread', 'Write a thread.'))
+    expect(fn () => app(GenerateAndPersistContent::class)->handle($project, 'forum_thread', 'Write a thread.', 'forum-direct-test-key'))
         ->toThrow(StructuredContentGenerationException::class, 'The generated content failed validation.');
 
     expect($project->generatedContents()->count())->toBe(0)

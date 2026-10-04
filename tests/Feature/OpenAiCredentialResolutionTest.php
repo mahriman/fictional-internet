@@ -1,8 +1,11 @@
 <?php
 
+use App\Actions\GenerationAttemptManager;
 use App\Enums\GeneratedContentVersionOrigin;
+use App\Enums\GenerationAttemptStatus;
 use App\Models\GeneratedContent;
 use App\Models\GeneratedContentVersion;
+use App\Models\GenerationAttempt;
 use App\Models\OpenAiCredential;
 use App\Models\Project;
 use App\Models\User;
@@ -43,7 +46,7 @@ function openAiCredentialSuccessPayload(): array
     ];
 }
 
-test('generation uses the personal key before the server fallback and never persists credentials', function () {
+test('generation uses only the saved personal key and never persists credentials', function () {
     $user = User::factory()->create();
     $project = Project::factory()->for($user)->create();
     $personalKey = 'personal-precedence-test-secret';
@@ -51,7 +54,7 @@ test('generation uses the personal key before the server fallback and never pers
     Http::fake(['https://api.openai.com/v1/responses' => Http::response(openAiCredentialSuccessPayload())]);
 
     $this->actingAs($user)->post(route('projects.generated-content.store', $project), [
-        ...generationAttemptFields($project),
+        ...personalGenerationAttemptFields($project),
         'content_type' => 'news_article',
         'prompt' => 'Write a fictional follow-up.',
         'api_key' => 'browser-submitted-test-secret',
@@ -73,97 +76,87 @@ test('generation uses the personal key before the server fallback and never pers
         ->and($persistedData)->not->toContain('server-fallback-test-secret')
         ->and($persistedData)->not->toContain('browser-submitted-test-secret')
         ->and(DB::table('open_ai_credentials')->value('api_key'))->not->toBe($personalKey);
+
+    $this->get(route('projects.generated-content.create', $project))
+        ->assertOk()
+        ->assertDontSee($personalKey)
+        ->assertDontSee('data-personal-key', false);
 });
 
-test('generation uses the server fallback only when enabled and no personal key exists', function () {
+test('a configured server key and legacy fallback flag cannot bypass the personal-key requirement', function () {
     $user = User::factory()->create();
     $project = Project::factory()->for($user)->create();
-    Http::fake(['https://api.openai.com/v1/responses' => Http::response(openAiCredentialSuccessPayload())]);
-
-    $this->actingAs($user)->post(route('projects.generated-content.store', $project), [
-        ...generationAttemptFields($project),
-        'content_type' => 'news_article',
-        'prompt' => 'Write a fictional story.',
-    ])->assertRedirect();
-
-    Http::assertSent(fn (Request $request): bool => $request->hasHeader(
-        'Authorization',
-        'Bearer server-fallback-test-secret',
-    ));
-    Http::assertSentCount(1);
-});
-
-test('disabled or missing server fallback prevents provider calls and preserves safe form fields', function () {
-    $user = User::factory()->create();
-    $project = Project::factory()->for($user)->create();
-    $reference = GeneratedContent::factory()->for($project)->create();
+    $token = app(GenerationAttemptManager::class)->tokenForForm($user, $project, null);
+    $reference = GeneratedContent::factory()->for($project)->create(['content_type' => 'news_article']);
     $reference->versions()->create([
         'version_number' => 1,
         'origin' => GeneratedContentVersionOrigin::AiGenerated,
         'content' => [
-            'headline' => 'Source title',
+            'headline' => 'Existing content remains available',
             'publication' => 'The Harbor Ledger',
             'published_at' => '2025-06-15T10:30:00Z',
-            'body' => 'Source body.',
+            'body' => 'Existing body.',
         ],
     ]);
-    config()->set('services.openai.allow_server_key_fallback', false);
-    $this->actingAs($user);
+    Http::fake();
 
-    $this->from(route('projects.generated-content.create', $project))
+    $this->actingAs($user)->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
-            ...generationAttemptFields($project),
+            'attempt_token' => $token,
             'content_type' => 'news_article',
-            'prompt' => 'Preserve this safe prompt.',
+            'prompt' => 'Preserve this prompt.',
             'references' => [$reference->uuid.':1'],
-            'api_key' => 'browser-submitted-test-secret',
+            'api_key' => 'browser-supplied-secret',
+        ])->assertRedirect(route('projects.generated-content.create', $project))
+        ->assertSessionHasErrors('credentials')
+        ->assertSessionHas('_old_input.attempt_token', $token)
+        ->assertSessionHas('_old_input.prompt', 'Preserve this prompt.')
+        ->assertSessionHas('_old_input.references', [$reference->uuid.':1'])
+        ->assertSessionMissing('_old_input.api_key');
+
+    $this->get(route('projects.generated-content.create', $project))
+        ->assertOk()
+        ->assertSee('A personal OpenAI API key is required before you can generate content.')
+        ->assertSee(route('account.settings'), false)
+        ->assertSee('Add a personal key to generate')
+        ->assertDontSee('data-generation-submit', false);
+
+    expect($project->generatedContents()->count())->toBe(1)
+        ->and(GenerationAttempt::query()->sole()->status)->toBe(GenerationAttemptStatus::Issued);
+    $this->get(route('projects.generated-content.show', [$project, $reference]))
+        ->assertOk()
+        ->assertSee('Existing content remains available');
+    Http::assertNothingSent();
+});
+
+test('missing personal credentials block all registered content types and preserve existing project content access', function (string $contentType) {
+    $user = User::factory()->create();
+    $project = Project::factory()->for($user)->create();
+    $token = app(GenerationAttemptManager::class)->tokenForForm($user, $project, null);
+    Http::fake();
+
+    $this->actingAs($user)
+        ->from(route('projects.generated-content.create', $project))
+        ->post(route('projects.generated-content.store', $project), [
+            'attempt_token' => $token,
+            'content_type' => $contentType,
+            'prompt' => 'Preserve this safe prompt.',
         ])
         ->assertRedirect(route('projects.generated-content.create', $project))
         ->assertSessionHasErrors('credentials')
-        ->assertSessionHas('_old_input.content_type', 'news_article')
+        ->assertSessionHas('_old_input.content_type', $contentType)
         ->assertSessionHas('_old_input.prompt', 'Preserve this safe prompt.')
-        ->assertSessionHas('_old_input.references', [$reference->uuid.':1'])
-        ->assertSessionMissing('_old_input.api_key');
+        ->assertSessionHas('_old_input.attempt_token', $token);
 
     $this->get(route('projects.generated-content.create', $project))
         ->assertOk()
         ->assertSee('Account settings')
         ->assertSee(route('account.settings'), false);
 
-    expect($project->generatedContents()->count())->toBe(1)
-        ->and(GeneratedContentVersion::query()->count())->toBe(1);
+    expect($project->generatedContents()->count())->toBe(0)
+        ->and(GenerationAttempt::query()->sole()->status)->toBe(GenerationAttemptStatus::Issued);
     Http::assertNothingSent();
-
-    config()->set('services.openai.allow_server_key_fallback', true);
-    config()->set('services.openai.api_key', null);
-    $this->post(route('projects.generated-content.store', $project), [
-        ...generationAttemptFields($project),
-        'content_type' => 'news_article',
-        'prompt' => 'Still unavailable.',
-    ])->assertSessionHasErrors('credentials');
-    Http::assertNothingSent();
-});
-
-test('false zero and off config values all disable the server fallback', function (mixed $disabledValue) {
-    $user = User::factory()->create();
-    $project = Project::factory()->for($user)->create();
-    config()->set('services.openai.allow_server_key_fallback', $disabledValue);
-    Http::fake();
-
-    $this->actingAs($user)
-        ->get(route('account.settings'))
-        ->assertOk()
-        ->assertSee('The server key fallback is disabled.');
-
-    $this->post(route('projects.generated-content.store', $project), [
-        ...generationAttemptFields($project),
-        'content_type' => 'news_article',
-        'prompt' => 'Fallback must remain disabled.',
-    ])->assertSessionHasErrors('credentials');
-
-    expect($project->generatedContents()->exists())->toBeFalse();
-    Http::assertNothingSent();
-})->with([false, 0, 'off']);
+})->with(['news_article', 'forum_thread']);
 
 test('personal authentication failures do not retry with the server fallback', function () {
     $user = User::factory()->create();
@@ -185,7 +178,7 @@ test('personal authentication failures do not retry with the server fallback', f
     $this->actingAs($user)
         ->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
-            ...generationAttemptFields($project),
+            ...personalGenerationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => 'Keep this prompt.',
             'references' => [$reference->uuid.':1'],
@@ -218,7 +211,7 @@ test('a credential decryption failure is safe and never falls back to the server
 
     $this->actingAs($user)
         ->post(route('projects.generated-content.store', $project), [
-            ...generationAttemptFields($project),
+            ...personalGenerationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => 'Do not make a provider call.',
         ])
@@ -229,6 +222,86 @@ test('a credential decryption failure is safe and never falls back to the server
     $safeError = session('errors')->getBag('default')->first('credentials');
     expect($safeError)->toContain('could not be decrypted')
         ->and($safeError)->not->toContain('invalid-ciphertext')
-        ->and($project->generatedContents()->exists())->toBeFalse();
+        ->and($project->generatedContents()->exists())->toBeFalse()
+        ->and(GenerationAttempt::query()->sole()->status)->toBe(GenerationAttemptStatus::Issued)
+        ->and(session()->get('_old_input.attempt_token'))->not->toBeNull();
+    Http::assertNothingSent();
+});
+
+test('replacing or removing a personal key changes the next generation credential immediately', function () {
+    $user = User::factory()->create();
+    $project = Project::factory()->for($user)->create();
+    OpenAiCredential::factory()->for($user)->create(['api_key' => 'old-personal-key']);
+    $this->actingAs($user)
+        ->put(route('account.settings.openai-credential.store'), ['api_key' => 'replacement-personal-key'])
+        ->assertRedirect(route('account.settings'));
+    Http::fakeSequence('https://api.openai.com/v1/responses')
+        ->push(openAiCredentialSuccessPayload())
+        ->push(openAiCredentialSuccessPayload());
+
+    $this->post(route('projects.generated-content.store', $project), [
+        ...personalGenerationAttemptFields($project),
+        'content_type' => 'news_article',
+        'prompt' => 'Use the replacement key.',
+    ])->assertRedirect();
+
+    Http::assertSent(fn (Request $request): bool => $request->hasHeader('Authorization', 'Bearer replacement-personal-key'));
+
+    $this->delete(route('account.settings.openai-credential.destroy'))->assertRedirect(route('account.settings'));
+    $newToken = app(GenerationAttemptManager::class)->tokenForForm($user, $project, null);
+    $this->from(route('projects.generated-content.create', $project))
+        ->post(route('projects.generated-content.store', $project), [
+            'attempt_token' => $newToken,
+            'content_type' => 'news_article',
+            'prompt' => 'A removed key cannot generate.',
+        ])
+        ->assertRedirect(route('projects.generated-content.create', $project))
+        ->assertSessionHasErrors('credentials');
+
+    Http::assertSentCount(1);
+    expect(GenerationAttempt::query()->where('status', GenerationAttemptStatus::Issued->value)->count())->toBe(1)
+        ->and($project->generatedContents()->count())->toBe(1);
+});
+
+test('users without a personal key can still read and manually edit existing content', function () {
+    $user = User::factory()->create();
+    $project = Project::factory()->for($user)->create();
+    $generatedContent = GeneratedContent::factory()->for($project)->create([
+        'content_type' => 'news_article',
+        'title' => 'Existing article',
+    ]);
+    $source = $generatedContent->versions()->create([
+        'version_number' => 1,
+        'origin' => GeneratedContentVersionOrigin::AiGenerated,
+        'content' => [
+            'headline' => 'Existing article',
+            'publication' => 'The Harbor Ledger',
+            'published_at' => '2025-06-15T10:30:00Z',
+            'body' => 'Existing body.',
+        ],
+    ]);
+    Http::fake();
+
+    $this->actingAs($user)
+        ->get(route('projects.generated-content.show', [$project, $generatedContent]))
+        ->assertOk()
+        ->assertSee('Existing article');
+
+    $this->get(route('projects.generated-content.versions.edit', [$project, $generatedContent, 1]))
+        ->assertOk()
+        ->assertSee('Existing body.');
+
+    $this->post(route('projects.generated-content.versions.edits.store', [$project, $generatedContent, 1]), [
+        'content' => [
+            'headline' => 'Manually revised article',
+            'publication' => 'The Harbor Ledger',
+            'published_at' => '2025-06-15T10:30:00Z',
+            'body' => 'Revised body.',
+        ],
+    ])->assertRedirect(route('projects.generated-content.versions.show', [$project, $generatedContent, 2]));
+
+    expect($source->fresh()->content['headline'])->toBe('Existing article')
+        ->and($generatedContent->versions()->count())->toBe(2)
+        ->and($generatedContent->versions()->where('version_number', 2)->firstOrFail()->content['headline'])->toBe('Manually revised article');
     Http::assertNothingSent();
 });

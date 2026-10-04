@@ -141,7 +141,7 @@ test('unregistered content type is rejected without sending a provider request',
 
     $this->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
-            ...generationAttemptFields($project),
+            ...personalGenerationAttemptFields($project),
             'content_type' => 'unregistered_type',
             'prompt' => 'Write a story about a lighthouse.',
             'api_key' => 'sensitive-browser-provided-key',
@@ -163,7 +163,7 @@ test('empty and whitespace prompts are rejected', function () {
 
     $this->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
-            ...generationAttemptFields($project),
+            ...personalGenerationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => " \t\n",
         ])
@@ -183,7 +183,7 @@ test('prompt length is limited at the application boundary', function () {
 
     $this->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
-            ...generationAttemptFields($project),
+            ...personalGenerationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => str_repeat('a', 10001),
         ])
@@ -221,7 +221,7 @@ test('successful generation persists one first version and redirects to a uuid d
     ]);
 
     $response = $this->post(route('projects.generated-content.store', $project), [
-        ...generationAttemptFields($project),
+        ...personalGenerationAttemptFields($project),
         'content_type' => 'news_article',
         'prompt' => $prompt,
         'api_key' => 'browser-provided-secret',
@@ -247,7 +247,7 @@ test('successful generation persists one first version and redirects to a uuid d
         ->toBe('/projects/'.$project->uuid.'/generated-content/'.$generatedContent->uuid);
 
     Http::assertSent(function (Request $request) use ($prompt): bool {
-        return $request->hasHeader('Authorization', 'Bearer configured-test-key')
+        return $request->hasHeader('Authorization', 'Bearer personal-test-openai-key')
             && $request['input'] === $prompt
             && $request['text']['format']['type'] === 'json_schema';
     });
@@ -319,7 +319,7 @@ test('provider failure returns safely to the form and preserves submitted values
     $this->followingRedirects()
         ->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
-            ...generationAttemptFields($project),
+            ...personalGenerationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => $prompt,
             'api_key' => 'sensitive-browser-provided-key',
@@ -363,7 +363,7 @@ test('structured generation failure creates no records and preserves form input'
     $this->followingRedirects()
         ->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
-            ...generationAttemptFields($project),
+            ...personalGenerationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => $prompt,
         ])
