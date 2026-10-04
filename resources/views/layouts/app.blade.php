@@ -16,6 +16,7 @@
                 <nav aria-label="Main navigation" class="flex items-center gap-3 sm:gap-5">
                     @auth
                         <a href="{{ route('projects.index') }}" class="text-sm font-medium text-slate-700 hover:text-indigo-700">Projects</a>
+                        <a href="{{ route('account.settings') }}" class="text-sm font-medium text-slate-700 hover:text-indigo-700">Account settings</a>
                         <span class="hidden text-sm text-slate-500 sm:inline">{{ auth()->user()->name }}</span>
                         <form method="POST" action="{{ route('logout') }}">
                             @csrf

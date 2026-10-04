@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Controllers\AccountSettingsController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\GeneratedContentController;
@@ -22,6 +23,11 @@ Route::middleware('guest')->group(function () {
 
 Route::middleware('auth')->group(function () {
     Route::post('/logout', [AuthenticatedSessionController::class, 'destroy'])->name('logout');
+    Route::get('/account/settings', [AccountSettingsController::class, 'show'])->name('account.settings');
+    Route::put('/account/settings/openai-credential', [AccountSettingsController::class, 'store'])
+        ->name('account.settings.openai-credential.store');
+    Route::delete('/account/settings/openai-credential', [AccountSettingsController::class, 'destroy'])
+        ->name('account.settings.openai-credential.destroy');
     Route::resource('projects', ProjectController::class);
     Route::get('/projects/{project}/context/edit', [ProjectContextController::class, 'edit'])
         ->name('projects.context.edit');

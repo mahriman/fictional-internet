@@ -37,6 +37,7 @@ return [
 
     'openai' => [
         'api_key' => env('OPENAI_API_KEY'),
+        'allow_server_key_fallback' => env('OPENAI_ALLOW_SERVER_KEY_FALLBACK', true),
         'model' => env('OPENAI_MODEL', 'gpt-5.4'),
         'timeout' => (int) env('OPENAI_TIMEOUT', 30),
     ],

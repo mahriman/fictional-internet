@@ -5,12 +5,15 @@ namespace App\Http\Controllers;
 use App\Actions\EditGeneratedContentVersion;
 use App\Actions\GenerateAndPersistContent;
 use App\ContentTypes\ContentTypeRegistry;
+use App\Exceptions\OpenAiCredentialException;
 use App\Exceptions\StructuredContentGenerationException;
 use App\Http\Requests\EditGeneratedContentRequest;
 use App\Http\Requests\GenerateContentRequest;
 use App\Models\GeneratedContent;
 use App\Models\GeneratedContentVersion;
 use App\Models\Project;
+use App\Models\User;
+use App\Services\OpenAI\OpenAiCredentialResolver;
 use App\Services\OpenAI\OpenAiException;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
@@ -48,12 +51,26 @@ class GeneratedContentController extends Controller
         GenerateContentRequest $request,
         Project $project,
         GenerateAndPersistContent $generateAndPersistContent,
+        OpenAiCredentialResolver $credentialResolver,
     ): RedirectResponse {
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
+
+        try {
+            $apiKey = $credentialResolver->forUser($user);
+        } catch (OpenAiCredentialException $exception) {
+            return redirect()
+                ->route('projects.generated-content.create', ['project' => $project])
+                ->withInput($request->safe()->only(['content_type', 'prompt', 'references']))
+                ->withErrors(['credentials' => $exception->getMessage()]);
+        }
+
         try {
             $result = $generateAndPersistContent->handle(
                 $project,
                 $request->validated('content_type'),
                 $request->validated('prompt'),
+                apiKey: $apiKey,
                 references: $request->validated('references', []),
             );
         } catch (ValidationException $exception) {
