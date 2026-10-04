@@ -4,31 +4,44 @@ namespace App\Http\Controllers;
 
 use App\Actions\EditGeneratedContentVersion;
 use App\Actions\GenerateAndPersistContent;
+use App\Actions\GenerationAttemptManager;
 use App\ContentTypes\ContentTypeRegistry;
+use App\Enums\GenerationAttemptStatus;
+use App\Exceptions\GenerationAttemptException;
 use App\Exceptions\OpenAiCredentialException;
 use App\Exceptions\StructuredContentGenerationException;
 use App\Http\Requests\EditGeneratedContentRequest;
 use App\Http\Requests\GenerateContentRequest;
 use App\Models\GeneratedContent;
 use App\Models\GeneratedContentVersion;
+use App\Models\GenerationAttempt;
 use App\Models\Project;
 use App\Models\User;
 use App\Services\OpenAI\OpenAiCredentialResolver;
 use App\Services\OpenAI\OpenAiException;
+use App\Services\OpenAI\OpenAiFailureKind;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Relations\Relation;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Gate;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use Throwable;
 
 class GeneratedContentController extends Controller
 {
-    public function create(Project $project, ContentTypeRegistry $contentTypes): View
-    {
+    public function create(
+        Request $request,
+        Project $project,
+        ContentTypeRegistry $contentTypes,
+        GenerationAttemptManager $attempts,
+    ): View {
         Gate::authorize('view', $project);
+        $user = $request->user();
+        abort_unless($user instanceof User, 401);
 
         $generatedContents = $project->generatedContents()
             ->select(['id', 'project_id', 'uuid', 'content_type', 'title'])
@@ -44,6 +57,11 @@ class GeneratedContentController extends Controller
             'project' => $project,
             'contentTypes' => $contentTypes->all(),
             'generatedContents' => $generatedContents,
+            'attemptToken' => $attempts->tokenForForm(
+                $user,
+                $project,
+                is_string(old('attempt_token')) ? old('attempt_token') : null,
+            ),
         ]);
     }
 
@@ -52,43 +70,171 @@ class GeneratedContentController extends Controller
         Project $project,
         GenerateAndPersistContent $generateAndPersistContent,
         OpenAiCredentialResolver $credentialResolver,
+        GenerationAttemptManager $attempts,
     ): RedirectResponse {
         $user = $request->user();
         abort_unless($user instanceof User, 401);
 
         try {
-            $apiKey = $credentialResolver->forUser($user);
-        } catch (OpenAiCredentialException $exception) {
-            return redirect()
-                ->route('projects.generated-content.create', ['project' => $project])
-                ->withInput($request->safe()->only(['content_type', 'prompt', 'references']))
-                ->withErrors(['credentials' => $exception->getMessage()]);
-        }
-
-        try {
-            $result = $generateAndPersistContent->handle(
+            $preparedGeneration = $generateAndPersistContent->prepare(
                 $project,
                 $request->validated('content_type'),
                 $request->validated('prompt'),
-                apiKey: $apiKey,
-                references: $request->validated('references', []),
+                $request->validated('references', []),
             );
         } catch (ValidationException $exception) {
-            return redirect()
-                ->route('projects.generated-content.create', ['project' => $project])
-                ->withInput($request->safe()->only(['content_type', 'prompt', 'references']))
-                ->withErrors($exception->errors());
-        } catch (OpenAiException|StructuredContentGenerationException) {
-            return redirect()
-                ->route('projects.generated-content.create', ['project' => $project])
-                ->withInput($request->safe()->only(['content_type', 'prompt', 'references']))
-                ->withErrors(['generation' => 'We could not generate content right now. Please try again.']);
+            return $this->generationFormRedirect(
+                $request,
+                $project,
+                $exception->errors(),
+                includeAttemptToken: true,
+            );
+        }
+
+        try {
+            $claim = $attempts->claim($user, $project, $request->validated('attempt_token'));
+        } catch (GenerationAttemptException) {
+            return $this->generationFormRedirect(
+                $request,
+                $project,
+                'This generation attempt is not available for this project. A new attempt is ready.',
+                includeAttemptToken: false,
+            );
+        }
+
+        $attempt = $claim->attempt;
+
+        if (! $claim->claimed) {
+            if ($attempt->status === GenerationAttemptStatus::Completed) {
+                $existingContent = $attempt->generatedContent()
+                    ->where('project_id', $project->getKey())
+                    ->first();
+
+                if ($existingContent !== null) {
+                    return redirect()->route('projects.generated-content.show', [
+                        'project' => $project,
+                        'generatedContent' => $existingContent,
+                    ]);
+                }
+            }
+
+            $message = match ($attempt->status) {
+                GenerationAttemptStatus::InProgress => 'This attempt is already processing or its outcome could not be confirmed. Its token cannot be reused. Submit again to start a new attempt.',
+                GenerationAttemptStatus::Failed => 'This attempt has already failed and cannot be replayed. Submit again to start a new attempt.',
+                GenerationAttemptStatus::Completed => 'This attempt is complete, but its result is no longer available. Submit again to start a new attempt.',
+            };
+
+            return $this->generationFormRedirect($request, $project, $message, includeAttemptToken: false);
+        }
+
+        try {
+            $apiKey = $credentialResolver->forUser($user);
+        } catch (OpenAiCredentialException $exception) {
+            $this->markAttemptFailed($attempts, $attempt);
+
+            return $this->generationFormRedirect(
+                $request,
+                $project,
+                ['credentials' => $exception->getMessage()],
+            );
+        }
+
+        try {
+            $result = $generateAndPersistContent->handlePrepared(
+                $preparedGeneration,
+                apiKey: $apiKey,
+                afterPersistence: fn (GeneratedContent $generatedContent) => $attempts->complete($attempt, $generatedContent),
+            );
+        } catch (OpenAiException $exception) {
+            $this->markAttemptFailed($attempts, $attempt);
+            $message = $this->openAiFailureMessage($exception);
+            $errorKey = in_array($exception->failureKind, [OpenAiFailureKind::Authentication, OpenAiFailureKind::Authorization], true)
+                ? 'credentials'
+                : 'generation';
+
+            return $this->generationFormRedirect($request, $project, [$errorKey => $message]);
+        } catch (StructuredContentGenerationException) {
+            $this->markAttemptFailed($attempts, $attempt);
+
+            return $this->generationFormRedirect(
+                $request,
+                $project,
+                ['generation' => 'OpenAI did not return valid structured content. Submit again to start a new attempt.'],
+            );
+        } catch (Throwable $exception) {
+            $this->markAttemptFailed($attempts, $attempt);
+
+            throw $exception;
         }
 
         return redirect()->route('projects.generated-content.show', [
             'project' => $project,
             'generatedContent' => $result->generatedContent,
         ]);
+    }
+
+    /**
+     * @return array<string, mixed>
+     */
+    private function safeGenerationInput(GenerateContentRequest $request, bool $includeAttemptToken = false): array
+    {
+        $fields = ['content_type', 'prompt', 'references'];
+
+        if ($includeAttemptToken) {
+            $attemptToken = $request->validated('attempt_token');
+            $user = $request->user();
+
+            if (is_string($attemptToken)
+                && is_string($request->input('attempt_token'))
+                && $user instanceof User
+                && GenerationAttempt::query()
+                    ->where('token_hash', hash('sha256', $attemptToken))
+                    ->where('user_id', $user->getKey())
+                    ->where('project_id', $request->route('project')?->getKey())
+                    ->where('status', GenerationAttemptStatus::Issued->value)
+                    ->exists()) {
+                $fields[] = 'attempt_token';
+            }
+        }
+
+        return $request->safe()->only($fields);
+    }
+
+    private function markAttemptFailed(GenerationAttemptManager $attempts, GenerationAttempt $attempt): void
+    {
+        try {
+            $attempts->fail($attempt);
+        } catch (Throwable $exception) {
+            report($exception);
+        }
+    }
+
+    /**
+     * @param  array<string, string>|string  $errors
+     */
+    private function generationFormRedirect(
+        GenerateContentRequest $request,
+        Project $project,
+        array|string $errors,
+        bool $includeAttemptToken = false,
+    ): RedirectResponse {
+        return redirect()
+            ->route('projects.generated-content.create', ['project' => $project])
+            ->withInput($this->safeGenerationInput($request, $includeAttemptToken))
+            ->withErrors(is_array($errors) ? $errors : ['generation' => $errors]);
+    }
+
+    private function openAiFailureMessage(OpenAiException $exception): string
+    {
+        return match ($exception->failureKind) {
+            OpenAiFailureKind::Authentication => 'OpenAI rejected the API key used for this request. Check a personal key in Account settings, or ask an administrator to review the server fallback.',
+            OpenAiFailureKind::Authorization => 'OpenAI denied access for the API key used for this request. Check personal-key permissions in Account settings, or ask an administrator to review the server fallback.',
+            OpenAiFailureKind::RateLimited => 'OpenAI is temporarily limiting requests. Please try again later.',
+            OpenAiFailureKind::Network => 'We could not confirm whether OpenAI completed the request because of a connection problem or timeout. Submit again to start a new attempt if needed.',
+            OpenAiFailureKind::TemporaryProvider => 'OpenAI is temporarily unavailable. Please try again later.',
+            OpenAiFailureKind::MalformedResponse, OpenAiFailureKind::IncompleteResponse, OpenAiFailureKind::Refusal => 'OpenAI did not return valid content. Submit again to start a new attempt.',
+            OpenAiFailureKind::Configuration, OpenAiFailureKind::Other => 'We could not generate content right now. Submit again to start a new attempt.',
+        };
     }
 
     public function show(

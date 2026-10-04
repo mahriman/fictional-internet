@@ -51,6 +51,7 @@ test('generation uses the personal key before the server fallback and never pers
     Http::fake(['https://api.openai.com/v1/responses' => Http::response(openAiCredentialSuccessPayload())]);
 
     $this->actingAs($user)->post(route('projects.generated-content.store', $project), [
+        ...generationAttemptFields($project),
         'content_type' => 'news_article',
         'prompt' => 'Write a fictional follow-up.',
         'api_key' => 'browser-submitted-test-secret',
@@ -80,6 +81,7 @@ test('generation uses the server fallback only when enabled and no personal key 
     Http::fake(['https://api.openai.com/v1/responses' => Http::response(openAiCredentialSuccessPayload())]);
 
     $this->actingAs($user)->post(route('projects.generated-content.store', $project), [
+        ...generationAttemptFields($project),
         'content_type' => 'news_article',
         'prompt' => 'Write a fictional story.',
     ])->assertRedirect();
@@ -110,6 +112,7 @@ test('disabled or missing server fallback prevents provider calls and preserves 
 
     $this->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
+            ...generationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => 'Preserve this safe prompt.',
             'references' => [$reference->uuid.':1'],
@@ -134,6 +137,7 @@ test('disabled or missing server fallback prevents provider calls and preserves 
     config()->set('services.openai.allow_server_key_fallback', true);
     config()->set('services.openai.api_key', null);
     $this->post(route('projects.generated-content.store', $project), [
+        ...generationAttemptFields($project),
         'content_type' => 'news_article',
         'prompt' => 'Still unavailable.',
     ])->assertSessionHasErrors('credentials');
@@ -152,6 +156,7 @@ test('false zero and off config values all disable the server fallback', functio
         ->assertSee('The server key fallback is disabled.');
 
     $this->post(route('projects.generated-content.store', $project), [
+        ...generationAttemptFields($project),
         'content_type' => 'news_article',
         'prompt' => 'Fallback must remain disabled.',
     ])->assertSessionHasErrors('credentials');
@@ -180,13 +185,14 @@ test('personal authentication failures do not retry with the server fallback', f
     $this->actingAs($user)
         ->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
+            ...generationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => 'Keep this prompt.',
             'references' => [$reference->uuid.':1'],
             'api_key' => 'browser-submitted-test-secret',
         ])
         ->assertRedirect(route('projects.generated-content.create', $project))
-        ->assertSessionHasErrors('generation')
+        ->assertSessionHasErrors('credentials')
         ->assertSessionHas('_old_input.references', [$reference->uuid.':1'])
         ->assertSessionMissing('_old_input.api_key');
 
@@ -195,7 +201,7 @@ test('personal authentication failures do not retry with the server fallback', f
         'Bearer invalid-personal-test-secret',
     ));
     Http::assertSentCount(1);
-    $safeError = session('errors')->getBag('default')->first('generation');
+    $safeError = session('errors')->getBag('default')->first('credentials');
     expect($safeError)->not->toContain('invalid-personal-test-secret')
         ->and($safeError)->not->toContain('server-fallback-test-secret')
         ->and($safeError)->not->toContain('private provider detail');
@@ -212,6 +218,7 @@ test('a credential decryption failure is safe and never falls back to the server
 
     $this->actingAs($user)
         ->post(route('projects.generated-content.store', $project), [
+            ...generationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => 'Do not make a provider call.',
         ])

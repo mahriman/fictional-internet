@@ -93,7 +93,9 @@ test('owners can open the form and content type options come from the registry',
         ->assertSee('name="content_type"', false)
         ->assertSee('name="prompt"', false)
         ->assertSee('data-generation-form', false)
-        ->assertSee('Generating your content. This may take a little while…');
+        ->assertSee('name="attempt_token"', false)
+        ->assertSee('role="status" aria-live="polite" aria-atomic="true"', false)
+        ->assertSee('Generation can take some time; keep this page open while it runs.');
 
     Http::assertNothingSent();
 });
@@ -123,6 +125,7 @@ test('unregistered content type is rejected without sending a provider request',
 
     $this->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
+            ...generationAttemptFields($project),
             'content_type' => 'unregistered_type',
             'prompt' => 'Write a story about a lighthouse.',
             'api_key' => 'sensitive-browser-provided-key',
@@ -144,6 +147,7 @@ test('empty and whitespace prompts are rejected', function () {
 
     $this->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
+            ...generationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => " \t\n",
         ])
@@ -163,6 +167,7 @@ test('prompt length is limited at the application boundary', function () {
 
     $this->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
+            ...generationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => str_repeat('a', 10001),
         ])
@@ -200,6 +205,7 @@ test('successful generation persists one first version and redirects to a uuid d
     ]);
 
     $response = $this->post(route('projects.generated-content.store', $project), [
+        ...generationAttemptFields($project),
         'content_type' => 'news_article',
         'prompt' => $prompt,
         'api_key' => 'browser-provided-secret',
@@ -296,12 +302,13 @@ test('provider failure returns safely to the form and preserves submitted values
     $this->followingRedirects()
         ->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
+            ...generationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => $prompt,
             'api_key' => 'sensitive-browser-provided-key',
         ])
         ->assertOk()
-        ->assertSee('We could not generate content right now. Please try again.')
+        ->assertSee('OpenAI is temporarily unavailable. Please try again later.')
         ->assertSee($prompt)
         ->assertDontSee('Sensitive provider response body must not be shown.')
         ->assertSessionMissingInput('api_key');
@@ -333,11 +340,12 @@ test('structured generation failure creates no records and preserves form input'
     $this->followingRedirects()
         ->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
+            ...generationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => $prompt,
         ])
         ->assertOk()
-        ->assertSee('We could not generate content right now. Please try again.')
+        ->assertSee('OpenAI did not return valid structured content. Submit again to start a new attempt.')
         ->assertSee($prompt);
 
     expect($project->generatedContents()->count())->toBe(0)

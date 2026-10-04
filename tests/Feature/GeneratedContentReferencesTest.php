@@ -95,6 +95,7 @@ test('generation captures selected versions in order for provider input and immu
     Http::fake(['https://api.openai.com/v1/responses' => Http::response(referenceGenerationResponse())]);
 
     $response = $this->actingAs($project->user)->post(route('projects.generated-content.store', $project), [
+        ...generationAttemptFields($project),
         'content_type' => 'news_article',
         'prompt' => $prompt,
         'references' => $references,
@@ -141,6 +142,7 @@ test('generation without references preserves the existing project-context input
     Http::fake(['https://api.openai.com/v1/responses' => Http::response(referenceGenerationResponse())]);
 
     $this->actingAs($project->user)->post(route('projects.generated-content.store', $project), [
+        ...generationAttemptFields($project),
         'content_type' => 'news_article',
         'prompt' => $prompt,
     ])->assertRedirect();
@@ -213,6 +215,7 @@ test('duplicate malformed nonexistent cross-project and excessive references are
         $this->actingAs($project->user)
             ->from(route('projects.generated-content.create', $project))
             ->post(route('projects.generated-content.store', $project), [
+                ...generationAttemptFields($project),
                 'content_type' => 'news_article',
                 'prompt' => 'Write a report.',
                 'references' => $selection,
@@ -247,6 +250,7 @@ test('a version number cannot select a version belonging to another content reco
 
     $this->actingAs($project->user)
         ->post(route('projects.generated-content.store', $project), [
+            ...generationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => 'Write a report.',
             'references' => [$firstContent->uuid.':2'],
@@ -268,6 +272,7 @@ test('cross-user references are rejected even when a project UUID is submitted a
 
     $this->actingAs($project->user)
         ->post(route('projects.generated-content.store', $project), [
+            ...generationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => 'Write a report.',
             'references' => [$foreignContent->uuid.':1'],
@@ -310,6 +315,7 @@ test('serialized reference payload uses a unicode-aware 30000 character limit wi
     Http::fake(['https://api.openai.com/v1/responses' => Http::response(referenceGenerationResponse())]);
 
     $this->actingAs($project->user)->post(route('projects.generated-content.store', $project), [
+        ...generationAttemptFields($project),
         'content_type' => 'news_article',
         'prompt' => 'Write a report.',
         'references' => [$source->uuid.':1'],
@@ -330,6 +336,7 @@ test('serialized reference payload uses a unicode-aware 30000 character limit wi
     Http::fake();
     $this->from(route('projects.generated-content.create', $project))
         ->post(route('projects.generated-content.store', $project), [
+            ...generationAttemptFields($project),
             'content_type' => 'news_article',
             'prompt' => 'Keep this prompt.',
             'references' => [$tooLarge->uuid.':1'],
@@ -360,6 +367,7 @@ test('delimiter-like prompt context and reference strings remain inside their da
     Http::fake(['https://api.openai.com/v1/responses' => Http::response(referenceGenerationResponse())]);
 
     $this->actingAs($project->user)->post(route('projects.generated-content.store', $project), [
+        ...generationAttemptFields($project),
         'content_type' => 'news_article',
         'prompt' => $prompt,
         'references' => [$source->uuid.':1'],

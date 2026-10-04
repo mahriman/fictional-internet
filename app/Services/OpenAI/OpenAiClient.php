@@ -28,14 +28,20 @@ class OpenAiClient
         $apiKey ??= config('services.openai.api_key');
 
         if (! is_string($apiKey) || trim($apiKey) === '') {
-            throw new OpenAiException('The OpenAI API key is not configured.');
+            throw new OpenAiException(
+                'The OpenAI API key is not configured.',
+                failureKind: OpenAiFailureKind::Configuration,
+            );
         }
 
         $model = config('services.openai.model');
         $timeout = (int) config('services.openai.timeout', 30);
 
         if (! is_string($model) || trim($model) === '' || $timeout < 1) {
-            throw new OpenAiException('The OpenAI model and a positive timeout must be configured.');
+            throw new OpenAiException(
+                'The OpenAI model and a positive timeout must be configured.',
+                failureKind: OpenAiFailureKind::Configuration,
+            );
         }
 
         $requestData = [
@@ -64,7 +70,11 @@ class OpenAiClient
                 ->connectTimeout(min($timeout, 10))
                 ->post(self::RESPONSES_ENDPOINT, $requestData);
         } catch (ConnectionException $exception) {
-            throw new OpenAiException('The OpenAI request failed due to a network error.', previous: $exception);
+            throw new OpenAiException(
+                'The OpenAI request failed due to a network error.',
+                previous: $exception,
+                failureKind: OpenAiFailureKind::Network,
+            );
         }
 
         if (! $response->successful()) {
@@ -77,15 +87,15 @@ class OpenAiClient
         $data = $response->json();
 
         if (! is_array($data)) {
-            throw new OpenAiException('The OpenAI response was malformed.');
+            throw new OpenAiException('The OpenAI response was malformed.', failureKind: OpenAiFailureKind::MalformedResponse);
         }
 
         if (($data['status'] ?? null) === 'incomplete') {
-            throw new OpenAiException('The OpenAI response was incomplete.');
+            throw new OpenAiException('The OpenAI response was incomplete.', failureKind: OpenAiFailureKind::IncompleteResponse);
         }
 
         if (($data['status'] ?? null) !== 'completed') {
-            throw new OpenAiException('The OpenAI response did not complete successfully.');
+            throw new OpenAiException('The OpenAI response did not complete successfully.', failureKind: OpenAiFailureKind::IncompleteResponse);
         }
 
         $responseId = $data['id'] ?? null;
@@ -93,19 +103,19 @@ class OpenAiClient
         $output = $data['output'] ?? null;
 
         if (! is_string($responseId) || $responseId === '' || ! is_string($actualModel) || $actualModel === '' || ! is_array($output)) {
-            throw new OpenAiException('The OpenAI response was malformed.');
+            throw new OpenAiException('The OpenAI response was malformed.', failureKind: OpenAiFailureKind::MalformedResponse);
         }
 
         $text = $this->extractOutputText($output);
 
         if ($text === null || trim($text) === '') {
-            throw new OpenAiException('The OpenAI response did not contain generated text.');
+            throw new OpenAiException('The OpenAI response did not contain generated text.', failureKind: OpenAiFailureKind::MalformedResponse);
         }
 
         $usage = $data['usage'] ?? null;
 
         if ($usage !== null && ! is_array($usage)) {
-            throw new OpenAiException('The OpenAI response usage data was malformed.');
+            throw new OpenAiException('The OpenAI response usage data was malformed.', failureKind: OpenAiFailureKind::MalformedResponse);
         }
 
         return new OpenAiResponseResult(
@@ -134,7 +144,7 @@ class OpenAiClient
             $content = $item['content'] ?? null;
 
             if (! is_array($content)) {
-                throw new OpenAiException('The OpenAI response content was malformed.');
+                throw new OpenAiException('The OpenAI response content was malformed.', failureKind: OpenAiFailureKind::MalformedResponse);
             }
 
             foreach ($content as $block) {
@@ -143,7 +153,7 @@ class OpenAiClient
                 }
 
                 if (($block['type'] ?? null) === 'refusal') {
-                    throw new OpenAiException('The OpenAI response was refused.');
+                    throw new OpenAiException('The OpenAI response was refused.', failureKind: OpenAiFailureKind::Refusal);
                 }
 
                 if (($block['type'] ?? null) !== 'output_text') {
@@ -151,7 +161,7 @@ class OpenAiClient
                 }
 
                 if (! is_string($block['text'] ?? null)) {
-                    throw new OpenAiException('The OpenAI response text was malformed.');
+                    throw new OpenAiException('The OpenAI response text was malformed.', failureKind: OpenAiFailureKind::MalformedResponse);
                 }
 
                 $text .= $block['text'];
@@ -174,7 +184,7 @@ class OpenAiClient
         }
 
         if (! is_int($count) || $count < 0) {
-            throw new OpenAiException('The OpenAI response usage data was malformed.');
+            throw new OpenAiException('The OpenAI response usage data was malformed.', failureKind: OpenAiFailureKind::MalformedResponse);
         }
 
         return $count;

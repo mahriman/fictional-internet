@@ -3,7 +3,9 @@
 namespace App\Http\Requests;
 
 use App\ContentTypes\ContentTypeRegistry;
+use App\Enums\GenerationAttemptStatus;
 use App\Models\GeneratedContentVersion;
+use App\Models\GenerationAttempt;
 use App\Models\Project;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Contracts\Validation\Validator;
@@ -15,6 +17,8 @@ use Illuminate\Validation\ValidationException;
 
 class GenerateContentRequest extends FormRequest
 {
+    private const string ATTEMPT_TOKEN_PATTERN = '/\A[a-f0-9]{64}\z/';
+
     /**
      * Redirect validation failures with only the fields accepted by this form.
      */
@@ -149,6 +153,7 @@ class GenerateContentRequest extends FormRequest
     public function rules(ContentTypeRegistry $contentTypes): array
     {
         return [
+            'attempt_token' => ['required', 'string', 'regex:'.self::ATTEMPT_TOKEN_PATTERN],
             'content_type' => ['required', 'string', Rule::in(array_keys($contentTypes->all()))],
             'prompt' => ['required', 'string', 'regex:/\S/u', 'max:10000'],
             'references' => ['sometimes', 'array', 'max:5'],
@@ -164,7 +169,7 @@ class GenerateContentRequest extends FormRequest
     /**
      * Flash only supported and safely shaped generation fields.
      *
-     * @return array{content_type?: string, prompt?: string, references?: list<string>}
+     * @return array{attempt_token?: string, content_type?: string, prompt?: string, references?: list<string>}
      */
     private function supportedInput(): array
     {
@@ -174,6 +179,24 @@ class GenerateContentRequest extends FormRequest
             if (is_string($this->input($field))) {
                 $safeInput[$field] = $this->input($field);
             }
+        }
+
+        $attemptToken = $this->input('attempt_token');
+
+        $project = $this->route('project');
+        $user = $this->user();
+
+        if (is_string($attemptToken)
+            && preg_match(self::ATTEMPT_TOKEN_PATTERN, $attemptToken) === 1
+            && $project instanceof Project
+            && $user !== null
+            && GenerationAttempt::query()
+                ->where('token_hash', hash('sha256', $attemptToken))
+                ->where('user_id', $user->getAuthIdentifier())
+                ->where('project_id', $project->getKey())
+                ->where('status', GenerationAttemptStatus::Issued->value)
+                ->exists()) {
+            $safeInput['attempt_token'] = $attemptToken;
         }
 
         $references = $this->input('references');

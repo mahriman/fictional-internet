@@ -6,6 +6,7 @@ use App\ContentTypes\ContentTypeRegistry;
 use App\Enums\GeneratedContentVersionOrigin;
 use App\Models\GeneratedContentVersion;
 use App\Models\Project;
+use Closure;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
@@ -33,6 +34,20 @@ class GenerateAndPersistContent
         ?string $apiKey = null,
         array $references = [],
     ): GeneratedContentGenerationResult {
+        return $this->handlePrepared($this->prepare($project, $contentType, $prompt, $references), $apiKey);
+    }
+
+    /**
+     * Resolve and validate all data-dependent generation inputs before a request attempt is claimed.
+     *
+     * @param  list<string>  $references
+     */
+    public function prepare(
+        Project $project,
+        string $contentType,
+        string $prompt,
+        array $references = [],
+    ): PreparedContentGeneration {
         if (! $project->exists || $project->getKey() === null) {
             throw new InvalidArgumentException('Generated content must belong to an existing project.');
         }
@@ -50,7 +65,6 @@ class GenerateAndPersistContent
             ->contains(static fn (?string $value): bool => filled($value));
         $projectContext = $hasProjectContext ? $projectContext : null;
         $generationInput = $this->composeGenerationInput($prompt, $projectContext, $referencesJson);
-        $generation = $this->generateContent->handle($contentType, $generationInput, $apiKey);
 
         $contextSnapshot = [
             'content_type' => $contentType,
@@ -60,6 +74,27 @@ class GenerateAndPersistContent
             'references' => $capturedReferences,
         ];
 
+        return new PreparedContentGeneration(
+            project: $project,
+            contentType: $contentType,
+            definition: $definition,
+            generationInput: $generationInput,
+            contextSnapshot: $contextSnapshot,
+        );
+    }
+
+    /**
+     * Invoke the provider, then atomically persist content, its first version, and optional finalization.
+     *
+     * The optional callback runs inside the short persistence transaction and must not perform external I/O.
+     */
+    public function handlePrepared(
+        PreparedContentGeneration $prepared,
+        ?string $apiKey = null,
+        ?Closure $afterPersistence = null,
+    ): GeneratedContentGenerationResult {
+        $generation = $this->generateContent->handle($prepared->contentType, $prepared->generationInput, $apiKey);
+
         $generationMetadata = [
             'provider' => 'openai',
             'model' => $generation->response->model,
@@ -67,30 +102,32 @@ class GenerateAndPersistContent
             'input_tokens' => $generation->response->inputTokens,
             'output_tokens' => $generation->response->outputTokens,
             'total_tokens' => $generation->response->totalTokens,
-            'content_type' => $contentType,
+            'content_type' => $prepared->contentType,
         ];
 
         return DB::transaction(function () use (
-            $project,
-            $contentType,
-            $definition,
+            $prepared,
             $generation,
-            $contextSnapshot,
             $generationMetadata,
+            $afterPersistence,
         ): GeneratedContentGenerationResult {
             $generatedContent = $this->createContent->handle(
-                $project,
-                $contentType,
-                $definition->titleFromContent($generation->content),
+                $prepared->project,
+                $prepared->contentType,
+                $prepared->definition->titleFromContent($generation->content),
             );
 
             $version = $this->appendVersion->handle(
                 $generatedContent,
                 $generation->content,
                 GeneratedContentVersionOrigin::AiGenerated,
-                $contextSnapshot,
+                $prepared->contextSnapshot,
                 $generationMetadata,
             );
+
+            if ($afterPersistence !== null) {
+                $afterPersistence($generatedContent);
+            }
 
             return new GeneratedContentGenerationResult(
                 generatedContent: $generatedContent,

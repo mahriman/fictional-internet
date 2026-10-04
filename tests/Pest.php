@@ -1,5 +1,7 @@
 <?php
 
+use App\Actions\GenerationAttemptManager;
+use App\Models\Project;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
@@ -47,4 +49,11 @@ expect()->extend('toBeOne', function () {
 function something()
 {
     // ..
+}
+
+function generationAttemptFields(Project $project, ?string $token = null): array
+{
+    $token = app(GenerationAttemptManager::class)->tokenForForm($project->user, $project, $token);
+
+    return ['attempt_token' => $token];
 }
