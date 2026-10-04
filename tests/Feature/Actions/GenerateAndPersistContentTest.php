@@ -88,7 +88,7 @@ test('generation is persisted as the first immutable ai generated version', func
         ->and($result->version->version_number)->toBe(1)
         ->and($result->version->origin)->toBe(GeneratedContentVersionOrigin::AiGenerated)
         ->and($result->version->based_on_version_id)->toBeNull()
-        ->and($result->version->fresh()->content)->toBe($article)
+        ->and(canonicalizeJsonStructure($result->version->fresh()->content))->toBe(canonicalizeJsonStructure($article))
         ->and($result->generatedContent->versions)->toHaveCount(1)
         ->and($insertTransactionLevels)->toHaveCount(2)
         ->and($insertTransactionLevels[0])->toBeGreaterThan($baselineTransactionLevel)
@@ -99,13 +99,13 @@ test('generation is persisted as the first immutable ai generated version', func
         $result->version->fresh()->generation_metadata,
     ], JSON_THROW_ON_ERROR);
 
-    expect($result->version->fresh()->context_snapshot)->toBe([
+    expect(canonicalizeJsonStructure($result->version->fresh()->context_snapshot))->toBe(canonicalizeJsonStructure([
         'content_type' => 'news_article',
         'prompt' => $prompt,
         'instructions' => 'Write a fictional news article with a clear headline, publication, publication date, and article body.',
         'project_context' => null,
         'references' => [],
-    ])->and($result->version->fresh()->generation_metadata)->toBe([
+    ]))->and(canonicalizeJsonStructure($result->version->fresh()->generation_metadata))->toBe(canonicalizeJsonStructure([
         'provider' => 'openai',
         'model' => 'actual-test-model',
         'response_id' => 'resp_persisted_article',
@@ -113,7 +113,7 @@ test('generation is persisted as the first immutable ai generated version', func
         'output_tokens' => 80,
         'total_tokens' => 200,
         'content_type' => 'news_article',
-    ])->and($result->generationMetadata)->toBe($result->version->generation_metadata)
+    ]))->and($result->generationMetadata)->toBe($result->version->generation_metadata)
         ->and($persistedInputs)->not->toContain('configured-test-key');
 });
 
@@ -168,11 +168,11 @@ test('generation uses and snapshots one captured project context for later manua
         'references' => [],
     ];
 
-    expect($result->version->fresh()->context_snapshot)->toBe($expectedSnapshot);
+    expect(canonicalizeJsonStructure($result->version->fresh()->context_snapshot))->toBe(canonicalizeJsonStructure($expectedSnapshot));
 
     $project->context()->update(['setting' => 'A changed world setting.']);
 
-    expect($result->version->fresh()->context_snapshot)->toBe($expectedSnapshot);
+    expect(canonicalizeJsonStructure($result->version->fresh()->context_snapshot))->toBe(canonicalizeJsonStructure($expectedSnapshot));
 
     $editedVersion = app(EditGeneratedContentVersion::class)->handle(
         $result->version,
@@ -184,7 +184,7 @@ test('generation uses and snapshots one captured project context for later manua
         ],
     );
 
-    expect($editedVersion->context_snapshot)->toBe($expectedSnapshot)
+    expect(canonicalizeJsonStructure($editedVersion->context_snapshot))->toBe(canonicalizeJsonStructure($expectedSnapshot))
         ->and($editedVersion->generation_metadata)->toBeNull();
 
     Http::assertSentCount(1);
@@ -269,6 +269,21 @@ test('a content type may omit its generated content title', function () {
         public function validationRules(): array
         {
             return ['body' => ['required', 'string']];
+        }
+
+        public function semanticValidationErrors(array $content): array
+        {
+            return [];
+        }
+
+        public function editingValidationRules(array $sourceContent): array
+        {
+            return $this->validationRules();
+        }
+
+        public function prepareEditedContent(array $submittedContent, array $sourceContent): array
+        {
+            return $submittedContent;
         }
     };
 

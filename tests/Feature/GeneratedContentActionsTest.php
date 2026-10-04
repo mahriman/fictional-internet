@@ -63,7 +63,7 @@ test('the first appended version is numbered one and persists structured content
         ->and($version->version_number)->toBe(1)
         ->and($version->based_on_version_id)->toBeNull()
         ->and($version->origin)->toBe(GeneratedContentVersionOrigin::AiGenerated)
-        ->and($version->fresh()->content)->toBe($content)
+        ->and(canonicalizeJsonStructure($version->fresh()->content))->toBe(canonicalizeJsonStructure($content))
         ->and($version->fresh()->context_snapshot)->toBe($contextSnapshot)
         ->and($version->fresh()->generation_metadata)->toBe($generationMetadata);
 });
@@ -133,9 +133,11 @@ test('the parent lookup, version calculation, and insert run inside the append t
         GeneratedContentVersionOrigin::AiGenerated,
     );
 
+    $versionLookupSql = str_replace(['"', '`'], '', $queries[1]['sql']);
+
     expect($queries)->toHaveCount(3)
         ->and($queries[0]['sql'])->toContain('generated_contents')
-        ->and($queries[1]['sql'])->toContain('order by "version_number" desc')
+        ->and($versionLookupSql)->toContain('order by version_number desc')
         ->and($queries[2]['sql'])->toContain('insert into')
         ->and(array_column($queries, 'transaction_level'))
         ->toBe(array_fill(0, 3, $transactionLevelBeforeAppend + 1));

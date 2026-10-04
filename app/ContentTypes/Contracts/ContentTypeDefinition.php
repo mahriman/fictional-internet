@@ -28,4 +28,23 @@ interface ContentTypeDefinition
      * @return array<string, array<int, string>>
      */
     public function validationRules(): array;
+
+    /**
+     * @param  array<string, mixed>  $content
+     * @return array<string, list<string>>
+     */
+    public function semanticValidationErrors(array $content): array;
+
+    /**
+     * @param  array<string, mixed>  $sourceContent
+     * @return array<string, array<int, string>>
+     */
+    public function editingValidationRules(array $sourceContent): array;
+
+    /**
+     * @param  array<string, mixed>  $submittedContent
+     * @param  array<string, mixed>  $sourceContent
+     * @return array<string, mixed>
+     */
+    public function prepareEditedContent(array $submittedContent, array $sourceContent): array;
 }

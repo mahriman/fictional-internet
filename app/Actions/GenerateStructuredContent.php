@@ -65,7 +65,17 @@ class GenerateStructuredContent
 
         $validator = Validator::make(['content' => $content], $validationRules);
 
-        if ($validator->fails()) {
+        $validationFailed = $validator->fails();
+
+        if (! $validationFailed) {
+            foreach ($definition->semanticValidationErrors($validator->validated()['content']) as $attribute => $messages) {
+                foreach ($messages as $message) {
+                    $validator->errors()->add('content.'.$attribute, $message);
+                }
+            }
+        }
+
+        if ($validationFailed || $validator->errors()->isNotEmpty()) {
             throw new StructuredContentGenerationException('The generated content failed validation.');
         }
 

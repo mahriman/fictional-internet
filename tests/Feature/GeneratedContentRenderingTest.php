@@ -48,7 +48,7 @@ test('registered news articles use the dedicated presentation and retain structu
         ->assertSee('View structured data')
         ->assertSee('&quot;headline&quot;', false);
 
-    expect($generatedContent->versions()->sole()->content)->toBe($content);
+    expect(canonicalizeJsonStructure($generatedContent->versions()->sole()->content))->toBe(canonicalizeJsonStructure($content));
     Http::assertNothingSent();
 });
 

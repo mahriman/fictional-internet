@@ -81,6 +81,21 @@ test('owners can open the form and content type options come from the registry',
         {
             return ['body' => ['required', 'string']];
         }
+
+        public function semanticValidationErrors(array $content): array
+        {
+            return [];
+        }
+
+        public function editingValidationRules(array $sourceContent): array
+        {
+            return $this->validationRules();
+        }
+
+        public function prepareEditedContent(array $submittedContent, array $sourceContent): array
+        {
+            return $submittedContent;
+        }
     };
 
     app()->instance(ContentTypeRegistry::class, new ContentTypeRegistry(new NewsArticleType, $otherContentType));
@@ -223,7 +238,7 @@ test('successful generation persists one first version and redirects to a uuid d
         ->and($version->version_number)->toBe(1)
         ->and($version->origin)->toBe(GeneratedContentVersionOrigin::AiGenerated)
         ->and($version->based_on_version_id)->toBeNull()
-        ->and($version->content)->toBe($article)
+        ->and(canonicalizeJsonStructure($version->content))->toBe(canonicalizeJsonStructure($article))
         ->and($generatedContent->versions()->count())->toBe(1);
 
     $response->assertRedirect($detailUrl);

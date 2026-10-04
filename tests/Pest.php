@@ -57,3 +57,25 @@ function generationAttemptFields(Project $project, ?string $token = null): array
 
     return ['attempt_token' => $token];
 }
+
+/**
+ * Sort JSON object keys recursively while preserving every JSON array's order.
+ */
+function canonicalizeJsonStructure(mixed $value): mixed
+{
+    if (! is_array($value)) {
+        return $value;
+    }
+
+    if (array_is_list($value)) {
+        return array_map(canonicalizeJsonStructure(...), $value);
+    }
+
+    ksort($value, SORT_STRING);
+
+    foreach ($value as $key => $nestedValue) {
+        $value[$key] = canonicalizeJsonStructure($nestedValue);
+    }
+
+    return $value;
+}

@@ -71,4 +71,19 @@ class NewsArticleType implements ContentTypeDefinition
             'body' => ['required', 'string'],
         ];
     }
+
+    public function semanticValidationErrors(array $content): array
+    {
+        return [];
+    }
+
+    public function editingValidationRules(array $sourceContent): array
+    {
+        return $this->validationRules();
+    }
+
+    public function prepareEditedContent(array $submittedContent, array $sourceContent): array
+    {
+        return $submittedContent;
+    }
 }

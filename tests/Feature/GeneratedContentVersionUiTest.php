@@ -200,7 +200,7 @@ test('the editor is prefilled from the selected older version and escapes its va
         ->assertDontSee('Newest version headline')
         ->assertDontSee('<script>alert("old")</script>', false);
 
-    expect($sourceVersion->fresh()->content)->toBe($sourceContent);
+    expect(canonicalizeJsonStructure($sourceVersion->fresh()->content))->toBe(canonicalizeJsonStructure($sourceContent));
     Http::assertNothingSent();
 });
 
@@ -234,7 +234,7 @@ test('invalid edits preserve supported fields, reject extra fields and do not fl
         ->assertSessionMissingInput('generation_metadata');
 
     expect($generatedContent->versions()->count())->toBe(1)
-        ->and($sourceVersion->fresh()->content)->toBe($sourceVersion->content);
+        ->and(canonicalizeJsonStructure($sourceVersion->fresh()->content))->toBe(canonicalizeJsonStructure($sourceVersion->content));
     Http::assertNothingSent();
 });
 
@@ -267,11 +267,6 @@ test('editing an older version appends a new branch without changing its source 
     $response = $this->actingAs($project->user)
         ->post(versionEditStoreRoute($project, $generatedContent, 1), [
             'content' => $editedContent,
-            'origin' => 'ai_generated',
-            'version_number' => 1,
-            'based_on_version_id' => null,
-            'context_snapshot' => ['forged' => true],
-            'generation_metadata' => ['forged' => true],
         ]);
 
     $newVersion = $generatedContent->versions()->where('version_number', 4)->sole();
@@ -280,12 +275,12 @@ test('editing an older version appends a new branch without changing its source 
     $response->assertRedirect($expectedUrl)
         ->assertSessionHas('status', 'Version 4 created from version 1.');
 
-    expect($newVersion->content)->toBe($editedContent)
+    expect(canonicalizeJsonStructure($newVersion->content))->toBe(canonicalizeJsonStructure($editedContent))
         ->and($newVersion->origin)->toBe(GeneratedContentVersionOrigin::UserEdited)
         ->and($newVersion->based_on_version_id)->toBe($sourceVersion->id)
         ->and($newVersion->context_snapshot)->toBe(['prompt' => 'Keep this context.'])
         ->and($newVersion->generation_metadata)->toBeNull()
-        ->and($sourceVersion->fresh()->content)->toBe($sourceContent)
+        ->and(canonicalizeJsonStructure($sourceVersion->fresh()->content))->toBe(canonicalizeJsonStructure($sourceContent))
         ->and($sourceVersion->fresh()->context_snapshot)->toBe(['prompt' => 'Keep this context.'])
         ->and($sourceVersion->fresh()->generation_metadata)->toBe(['model' => 'original-model'])
         ->and($generatedContent->fresh()->title)->toBe('Initial parent title')

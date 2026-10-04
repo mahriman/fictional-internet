@@ -3,6 +3,7 @@
 namespace App\Providers;
 
 use App\ContentTypes\ContentTypeRegistry;
+use App\ContentTypes\Definitions\ForumThreadType;
 use App\ContentTypes\Definitions\NewsArticleType;
 use App\Services\OpenAI\OpenAiClient;
 use Illuminate\Support\ServiceProvider;
@@ -16,7 +17,7 @@ class AppServiceProvider extends ServiceProvider
     {
         $this->app->singleton(
             ContentTypeRegistry::class,
-            fn (): ContentTypeRegistry => new ContentTypeRegistry(new NewsArticleType),
+            fn (): ContentTypeRegistry => new ContentTypeRegistry(new NewsArticleType, new ForumThreadType),
         );
 
         $this->app->singleton(OpenAiClient::class);

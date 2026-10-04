@@ -31,10 +31,10 @@ test('structured content and context metadata cast to arrays', function () {
         'generation_metadata' => ['prompt_revision' => 'news-article-v1'],
     ])->fresh();
 
-    expect($version->content)->toBe([
+    expect(canonicalizeJsonStructure($version->content))->toBe(canonicalizeJsonStructure([
         'headline' => 'Midnight Signal',
         'body' => 'A strange broadcast aired.',
-    ])
+    ]))
         ->and($version->context_snapshot)->toBe(['location' => 'North Harbor'])
         ->and($version->generation_metadata)->toBe(['prompt_revision' => 'news-article-v1']);
 });
