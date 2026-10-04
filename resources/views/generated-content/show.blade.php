@@ -44,6 +44,26 @@
                     <pre class="mt-4 overflow-x-auto rounded-xl bg-slate-950 p-5 text-sm leading-6 text-slate-100"><code>{{ json_encode($structuredContent, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) }}</code></pre>
                 </details>
             @endif
+
+            @if ($referenceSummaries !== [])
+                <section class="border-t border-slate-100 px-5 py-5 sm:px-8" aria-labelledby="references-heading">
+                    <h2 id="references-heading" class="text-sm font-semibold text-slate-900">References used</h2>
+                    <ul class="mt-3 space-y-2">
+                        @foreach ($referenceSummaries as $reference)
+                            <li class="text-sm leading-6 text-slate-700">
+                                @if ($reference['url'] !== null)
+                                    <a href="{{ $reference['url'] }}" class="font-medium text-indigo-700 underline decoration-indigo-300 underline-offset-2 hover:text-indigo-900">
+                                        {{ $reference['title'] }}
+                                    </a>
+                                @else
+                                    <span class="font-medium">{{ $reference['title'] }}</span>
+                                @endif
+                                <span class="text-slate-500">· {{ $reference['content_type'] }} · version {{ $reference['version_number'] ?? 'unavailable' }}</span>
+                            </li>
+                        @endforeach
+                    </ul>
+                </section>
+            @endif
         </article>
 
         <section class="mt-8 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8" aria-labelledby="version-history-heading">
