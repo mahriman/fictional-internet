@@ -3,10 +3,11 @@
 namespace App\ContentTypes\Definitions;
 
 use App\ContentTypes\Contracts\ContentTypeDefinition;
+use App\ContentTypes\Contracts\ContinuableContentType;
 use App\ContentTypes\Contracts\GeneratedContentNormalizer;
 use App\ContentTypes\DiscussionSemantics;
 
-class SchreckNetThreadType implements ContentTypeDefinition, GeneratedContentNormalizer
+class SchreckNetThreadType implements ContentTypeDefinition, ContinuableContentType, GeneratedContentNormalizer
 {
     public const MAX_MESSAGES = 30;
 
@@ -20,6 +21,16 @@ class SchreckNetThreadType implements ContentTypeDefinition, GeneratedContentNor
     public function label(): string
     {
         return 'SchreckNet Thread';
+    }
+
+    public function continuationCollectionField(): string
+    {
+        return 'messages';
+    }
+
+    public function continuationNumberField(): string
+    {
+        return 'message_number';
     }
 
     public function presentationView(): ?string

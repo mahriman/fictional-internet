@@ -3,10 +3,11 @@
 namespace App\ContentTypes\Definitions;
 
 use App\ContentTypes\Contracts\ContentTypeDefinition;
+use App\ContentTypes\Contracts\ContinuableContentType;
 use App\ContentTypes\Contracts\GeneratedContentNormalizer;
 use App\ContentTypes\DiscussionSemantics;
 
-class ForumThreadType implements ContentTypeDefinition, GeneratedContentNormalizer
+class ForumThreadType implements ContentTypeDefinition, ContinuableContentType, GeneratedContentNormalizer
 {
     public const MAX_POSTS = 20;
 
@@ -20,6 +21,16 @@ class ForumThreadType implements ContentTypeDefinition, GeneratedContentNormaliz
     public function label(): string
     {
         return 'Forum Thread';
+    }
+
+    public function continuationCollectionField(): string
+    {
+        return 'posts';
+    }
+
+    public function continuationNumberField(): string
+    {
+        return 'post_number';
     }
 
     public function presentationView(): ?string
