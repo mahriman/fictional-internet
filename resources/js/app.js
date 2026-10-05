@@ -12,7 +12,7 @@ document.querySelectorAll('[data-generation-form]').forEach((form) => {
         form.dataset.submitting = 'true';
         form.setAttribute('aria-busy', 'true');
         submitButton.disabled = true;
-        submitButton.textContent = 'Generating…';
+        submitButton.textContent = submitButton.dataset.progressLabel || 'Generating…';
 
         if (statusMessage) {
             statusMessage.hidden = false;

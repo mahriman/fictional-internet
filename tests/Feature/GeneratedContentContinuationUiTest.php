@@ -125,6 +125,7 @@ function continuationUiCredential(Project $project): void
 
 test('owners can open Forum Thread and SchreckNet continuation forms with source-bound opaque attempts', function (string $type) {
     $project = Project::factory()->create();
+    continuationUiCredential($project);
     $content = GeneratedContent::factory()->for($project)->create(['content_type' => $type]);
     $source = GeneratedContentVersion::factory()->for($content)->create([
         'version_number' => 1,
@@ -145,7 +146,22 @@ test('owners can open Forum Thread and SchreckNet continuation forms with source
         ->assertSee('1 of '.($type === 'forum_thread' ? '20' : '30'))
         ->assertSee('Newer versions already exist')
         ->assertSee('branch from this selected version')
+        ->assertSee('Continuation source:')
+        ->assertSee('exact base document being extended')
+        ->assertSee('Project Context')
+        ->assertSee('supplied automatically with the continuation when configured')
+        ->assertSee('separate from the selected source version')
+        ->assertSee('Review Project Context')
         ->assertSee('name="references[]"', false)
+        ->assertSee('optional, up to five versions')
+        ->assertSee('exact immutable versions')
+        ->assertSee('order shown here')
+        ->assertSee('not appended as discussion entries')
+        ->assertSee('may charge your account')
+        ->assertSee('data-generation-form', false)
+        ->assertSee('data-generation-submit', false)
+        ->assertSee('data-progress-label="Continuing…"', false)
+        ->assertSee('role="status" aria-live="polite" aria-atomic="true"', false)
         ->assertSee($content->uuid.':2', false);
 
     $token = $response->viewData('attemptToken');
@@ -157,6 +173,10 @@ test('owners can open Forum Thread and SchreckNet continuation forms with source
         ->and($attempt->source_version_id)->toBe($source->id)
         ->and($attempt->status)->toBe(GenerationAttemptStatus::Issued)
         ->and($newer->version_number)->toBe(2);
+
+    $response->assertSee('name="attempt_token" value="'.$token.'"', false)
+        ->assertDontSee('continuation-ui-personal-key')
+        ->assertDontSee('name="api_key"', false);
 
     $latestForm = $this->get(continuationUiRoute($project, $content, 2, 'create'))
         ->assertOk()
@@ -477,7 +497,14 @@ test('missing personal credentials block continuation without consuming the atte
     $content = GeneratedContent::factory()->for($project)->create(['content_type' => 'forum_thread']);
     $source = GeneratedContentVersion::factory()->for($content)->create(['content' => continuationUiSource('forum_thread')]);
     $formUrl = continuationUiRoute($project, $content, 1, 'create');
-    $form = $this->actingAs($project->user)->get($formUrl)->assertSee('personal OpenAI API key is required');
+    $form = $this->actingAs($project->user)
+        ->get($formUrl)
+        ->assertSee('personal OpenAI API key is required')
+        ->assertSee(route('account.settings'))
+        ->assertSee('Add a personal key to continue')
+        ->assertDontSee('data-generation-submit', false)
+        ->assertSee('After you add a personal key, submitting')
+        ->assertSee('may charge your account');
     $token = $form->viewData('attemptToken');
 
     $this->from($formUrl)

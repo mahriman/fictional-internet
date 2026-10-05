@@ -56,14 +56,21 @@
                     @enderror
                 </div>
 
+                <aside class="rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-4" aria-labelledby="project-context-generation-heading">
+                    <h2 id="project-context-generation-heading" class="text-sm font-semibold text-slate-900">Project Context</h2>
+                    <p class="mt-1 text-sm leading-6 text-slate-700">Reusable information about this project’s fictional world is supplied automatically with each request when configured. Some or all context sections may be empty, and you do not need to select Project Context for each generation.</p>
+                    <a href="{{ route('projects.context.edit', $project) }}" class="mt-2 inline-flex text-sm font-semibold text-indigo-800 underline decoration-indigo-300 underline-offset-2 hover:text-indigo-950">Review Project Context</a>
+                </aside>
+
                 @include('generated-content.partials.reference-selector')
 
                 <div class="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
                     <a href="{{ route('projects.show', $project) }}" class="rounded-lg border border-slate-300 px-4 py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Cancel</a>
                     <div class="flex flex-col items-stretch gap-3 sm:items-end">
                         <p id="generation-progress" class="text-sm text-slate-600" data-generation-status role="status" aria-live="polite" aria-atomic="true" hidden>Generating your content. This can take some time. Please keep this page open…</p>
+                        <p class="max-w-xl text-xs leading-5 text-slate-600">@if ($hasPersonalKey) Submitting @else After you add a personal key, submitting @endif sends a request using your personal OpenAI API key. OpenAI may charge your account according to usage and your provider terms; this app does not estimate charges.</p>
                         @if ($hasPersonalKey)
-                            <button type="submit" data-generation-submit class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700 disabled:cursor-wait disabled:opacity-70">Generate content</button>
+                            <button type="submit" data-generation-submit data-progress-label="Generating…" class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700 disabled:cursor-wait disabled:opacity-70">Generate content</button>
                         @else
                             <button type="button" disabled class="rounded-lg bg-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-600 disabled:cursor-not-allowed">Add a personal key to generate</button>
                         @endif

@@ -6,6 +6,7 @@ use App\ContentTypes\Definitions\NewsArticleType;
 use App\Enums\GeneratedContentVersionOrigin;
 use App\Models\GeneratedContent;
 use App\Models\GeneratedContentVersion;
+use App\Models\OpenAiCredential;
 use App\Models\Project;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -36,6 +37,7 @@ test('guests cannot access project content generation routes', function () {
 
 test('owners can open the form and content type options come from the registry', function () {
     $project = Project::factory()->create();
+    OpenAiCredential::factory()->for($project->user)->create(['api_key' => 'generation-ui-private-key']);
     $otherContentType = new class implements ContentTypeDefinition
     {
         public function key(): string
@@ -110,8 +112,36 @@ test('owners can open the form and content type options come from the registry',
         ->assertSee('name="prompt"', false)
         ->assertSee('data-generation-form', false)
         ->assertSee('name="attempt_token"', false)
+        ->assertSee('supplied automatically with each request when configured')
+        ->assertSee('Review Project Context')
+        ->assertSee('Reference material')
+        ->assertSee('optional, up to five versions')
+        ->assertSee('exact immutable versions')
+        ->assertSee('separate from the automatically supplied Project Context')
+        ->assertSee('captured in the new version’s provenance')
+        ->assertSee('may charge your account')
+        ->assertSee('data-generation-submit', false)
+        ->assertSee('data-progress-label="Generating…"', false)
+        ->assertSee('name="attempt_token" value="', false)
         ->assertSee('role="status" aria-live="polite" aria-atomic="true"', false)
-        ->assertSee('Generation can take some time; keep this page open while it runs.');
+        ->assertSee('Generation can take some time; keep this page open while it runs.')
+        ->assertDontSee('generation-ui-private-key')
+        ->assertDontSee('name="api_key"', false);
+
+    Http::assertNothingSent();
+});
+
+test('generation without a personal key explains how to configure one and offers no generate submit button', function () {
+    $project = Project::factory()->create();
+
+    $this->actingAs($project->user)
+        ->get(route('projects.generated-content.create', $project))
+        ->assertSee('A personal OpenAI API key is required')
+        ->assertSee(route('account.settings'))
+        ->assertSee('Add a personal key to generate')
+        ->assertDontSee('data-generation-submit', false)
+        ->assertSee('After you add a personal key, submitting')
+        ->assertSee('may charge your account');
 
     Http::assertNothingSent();
 });

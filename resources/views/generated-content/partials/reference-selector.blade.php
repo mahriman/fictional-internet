@@ -1,7 +1,7 @@
 @php($selectedReferences = old('references', []))
 <div>
     <label for="references" class="block text-sm font-medium text-slate-700">Reference material <span class="font-normal text-slate-500">(optional, up to five versions)</span></label>
-    <p id="references-help" class="mt-2 text-xs leading-5 text-slate-500">Select exact versions from this project. Reference material is treated as source material and does not automatically become project canon. You can remove a selection before submitting by deselecting it.</p>
+    <p id="references-help" class="mt-2 text-xs leading-5 text-slate-500">Optionally select up to five exact immutable versions of existing project content as supplementary source material for this request. References are separate from the automatically supplied Project Context, do not automatically become canonical truth, and the exact versions you choose are captured in the new version’s provenance. Multiple selections are supplied in the order shown here. Deselect an option to remove it.</p>
 
     @if ($generatedContents->isEmpty() || $generatedContents->every(fn ($generatedContent) => $generatedContent->versions->isEmpty()))
         <p class="mt-3 rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">No generated versions are available to reference yet.</p>

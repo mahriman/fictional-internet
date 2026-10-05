@@ -10,7 +10,7 @@
             <p class="text-sm font-semibold uppercase tracking-[0.16em] text-indigo-700">{{ $project->name }} · {{ $contentTypeLabel }}</p>
             <h1 class="mt-2 text-3xl font-semibold tracking-tight text-slate-950">Continue {{ $contentTypeLabel }} from version {{ $sourceVersion->version_number }}</h1>
             <p class="mt-2 break-words text-lg font-medium text-slate-800">{{ $sourceTitle }}</p>
-            <p class="mt-3 text-sm leading-6 text-slate-600">This creates a new immutable version from the selected version. The source and other existing versions remain unchanged.</p>
+            <p class="mt-3 text-sm leading-6 text-slate-600"><span class="font-semibold text-slate-800">Continuation source:</span> version {{ $sourceVersion->version_number }} is the exact base document being extended. New entries will be added to a new immutable version; this source and other existing versions remain unchanged. Optional references provide context and are not appended as discussion entries.</p>
 
             @if ($hasNewerVersions)
                 <p role="status" class="mt-5 rounded-lg border border-indigo-200 bg-indigo-50 px-4 py-3 text-sm leading-6 text-indigo-950">Newer versions already exist. Continuing from version {{ $sourceVersion->version_number }} will create a separate branch from this selected version.</p>
@@ -21,6 +21,12 @@
                 <div><dt class="text-slate-500">Current entries</dt><dd class="mt-1 font-semibold text-slate-900">{{ $entryCount }} of {{ $maximumEntryCount }}</dd></div>
                 <div><dt class="text-slate-500">Remaining capacity</dt><dd class="mt-1 font-semibold text-slate-900">{{ $remainingCapacity ?? 'Unavailable' }}</dd></div>
             </dl>
+
+            <aside class="mt-5 rounded-xl border border-indigo-100 bg-indigo-50/60 px-4 py-4" aria-labelledby="project-context-continuation-heading">
+                <h2 id="project-context-continuation-heading" class="text-sm font-semibold text-slate-900">Project Context</h2>
+                <p class="mt-1 text-sm leading-6 text-slate-700">Reusable information about this project’s fictional world is supplied automatically with the continuation when configured. Some or all context sections may be empty; Project Context is separate from the selected source version and does not need to be selected below.</p>
+                <a href="{{ route('projects.context.edit', $project) }}" class="mt-2 inline-flex text-sm font-semibold text-indigo-800 underline decoration-indigo-300 underline-offset-2 hover:text-indigo-950">Review Project Context</a>
+            </aside>
 
             @if ($remainingCapacity === 0)
                 <p role="status" class="mt-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950">This discussion has reached the maximum supported size and cannot be continued from this version.</p>
@@ -42,7 +48,7 @@
                     @endif
                 @endforeach
 
-                <form method="POST" action="{{ route('projects.generated-content.versions.continuations.store', [$project, $generatedContent, $sourceVersion->version_number]) }}" class="mt-8 space-y-6">
+                <form method="POST" action="{{ route('projects.generated-content.versions.continuations.store', [$project, $generatedContent, $sourceVersion->version_number]) }}" class="mt-8 space-y-6" data-generation-form>
                     @csrf
                     <input type="hidden" name="attempt_token" value="{{ $attemptToken }}">
 
@@ -76,11 +82,15 @@
 
                     <div class="flex flex-col-reverse gap-3 border-t border-slate-100 pt-5 sm:flex-row sm:items-center sm:justify-between">
                         <a href="{{ route('projects.generated-content.versions.show', [$project, $generatedContent, $sourceVersion->version_number]) }}" class="rounded-lg border border-slate-300 px-4 py-2.5 text-center text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Cancel</a>
-                        @if ($hasPersonalKey)
-                            <button type="submit" class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Create continuation</button>
-                        @else
-                            <button type="button" disabled class="rounded-lg bg-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-600 disabled:cursor-not-allowed">Add a personal key to continue</button>
-                        @endif
+                        <div class="flex flex-col items-stretch gap-3 sm:items-end">
+                            <p id="continuation-progress" class="text-sm text-slate-600" data-generation-status role="status" aria-live="polite" aria-atomic="true" hidden>Generating the continuation. This can take some time. Please keep this page open…</p>
+                            <p class="max-w-xl text-xs leading-5 text-slate-600">@if ($hasPersonalKey) Submitting @else After you add a personal key, submitting @endif sends a request using your personal OpenAI API key. OpenAI may charge your account according to usage and your provider terms; this app does not estimate charges.</p>
+                            @if ($hasPersonalKey)
+                                <button type="submit" data-generation-submit data-progress-label="Continuing…" class="rounded-lg bg-indigo-700 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700 disabled:cursor-wait disabled:opacity-70">Create continuation</button>
+                            @else
+                                <button type="button" disabled class="rounded-lg bg-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-600 disabled:cursor-not-allowed">Add a personal key to continue</button>
+                            @endif
+                        </div>
                     </div>
                 </form>
             @endif
