@@ -8,6 +8,7 @@ use App\Actions\GenerationAttemptManager;
 use App\ContentTypes\ContentContinuationComposer;
 use App\ContentTypes\ContentTypeRegistry;
 use App\ContentTypes\Contracts\ContinuableContentType;
+use App\Enums\GeneratedContentVersionOrigin;
 use App\Enums\GenerationAttemptStatus;
 use App\Exceptions\GenerationAttemptException;
 use App\Exceptions\OpenAiCredentialException;
@@ -286,7 +287,7 @@ class GeneratedContentController extends Controller
         $version = $generatedContent->versions()
             ->where('version_number', $versionNumber)
             ->firstOrFail();
-        $version->loadMissing('basedOnVersion:id,version_number');
+        $version->loadMissing('basedOnVersion:id,generated_content_id,version_number');
 
         return $this->showVersionContent(
             $project,
@@ -351,7 +352,7 @@ class GeneratedContentController extends Controller
     private function versionHistory(GeneratedContent $generatedContent): Collection
     {
         return $generatedContent->versions()
-            ->with('basedOnVersion:id,version_number')
+            ->with('basedOnVersion:id,generated_content_id,version_number')
             ->reorder()
             ->orderByDesc('version_number')
             ->get();
@@ -373,6 +374,10 @@ class GeneratedContentController extends Controller
         $presentationView = $contentType?->presentationView();
         $editingView = $contentType?->editingView();
         $latestVersion = $versions->first();
+        $sourceVersion = $this->scopedSourceVersion($version, $generatedContent);
+        $provenanceLabels = $versions->mapWithKeys(fn (GeneratedContentVersion $historyVersion): array => [
+            $historyVersion->version_number => $this->provenanceLabel($historyVersion),
+        ]);
         $continuationSupported = $contentType instanceof ContinuableContentType;
         $continuationCapacity = null;
 
@@ -398,11 +403,60 @@ class GeneratedContentController extends Controller
                 : null,
             'versionTitle' => $contentType?->titleFromContent($structuredContent),
             'versionHistory' => $versions,
+            'provenanceLabel' => $this->provenanceLabel($version),
+            'provenanceLabels' => $provenanceLabels,
+            'sourceVersion' => $sourceVersion,
             'isLatestVersion' => $latestVersion !== null && $latestVersion->is($version),
+            'latestVersionNumber' => $latestVersion?->version_number,
             'referenceSummaries' => $this->referenceSummaries($project, $version, $contentTypes),
             'continuationSupported' => $continuationSupported,
             'continuationCapacity' => $continuationCapacity,
         ]);
+    }
+
+    private function provenanceLabel(GeneratedContentVersion $version): string
+    {
+        if ($version->origin === GeneratedContentVersionOrigin::UserEdited) {
+            return 'Manual edit';
+        }
+
+        $snapshot = $version->context_snapshot;
+
+        if (! is_array($snapshot)) {
+            return 'AI-generated';
+        }
+
+        if (($snapshot['operation'] ?? null) === 'continuation') {
+            return 'AI continuation';
+        }
+
+        $isInitialGenerationSnapshot = ! array_key_exists('operation', $snapshot)
+            && $version->based_on_version_id === null
+            && is_string($snapshot['content_type'] ?? null)
+            && array_key_exists('prompt', $snapshot)
+            && array_key_exists('instructions', $snapshot)
+            && array_key_exists('project_context', $snapshot)
+            && array_key_exists('references', $snapshot);
+
+        if ($isInitialGenerationSnapshot) {
+            return 'Initial AI generation';
+        }
+
+        return 'AI-generated';
+    }
+
+    private function scopedSourceVersion(
+        GeneratedContentVersion $version,
+        GeneratedContent $generatedContent,
+    ): ?GeneratedContentVersion {
+        $sourceVersion = $version->basedOnVersion;
+
+        if ($sourceVersion === null
+            || (string) $sourceVersion->generated_content_id !== (string) $generatedContent->getKey()) {
+            return null;
+        }
+
+        return $sourceVersion;
     }
 
     /**

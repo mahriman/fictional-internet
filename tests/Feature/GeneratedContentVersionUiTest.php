@@ -77,6 +77,7 @@ test('ordinary detail shows the latest version and history is ordered by version
         ->assertSee('Latest branch')
         ->assertSee('Version 3')
         ->assertSee('AI-generated')
+        ->assertSee('Currently viewing')
         ->assertSee('Latest version')
         ->assertSee('Based on version 1')
         ->assertSeeInOrder(['Version 3', 'Version 2', 'Version 1'])
@@ -87,6 +88,69 @@ test('ordinary detail shows the latest version and history is ordered by version
     expect($branch->basedOnVersion->is($root))->toBeTrue()
         ->and($latestBranch->basedOnVersion->is($root))->toBeTrue()
         ->and($generatedContent->fresh()->title)->toBe('Original stored title');
+
+    Http::assertNothingSent();
+});
+
+test('version history uses persisted provenance and links directly to each actual branch source', function () {
+    $project = Project::factory()->create();
+    $generatedContent = GeneratedContent::factory()->for($project)->create();
+    $otherContent = GeneratedContent::factory()->for($project)->create();
+    GeneratedContentVersion::factory()->for($otherContent)->create(['version_number' => 1]);
+    $initial = GeneratedContentVersion::factory()->for($generatedContent)->create([
+        'version_number' => 1,
+        'context_snapshot' => [
+            'content_type' => 'news_article',
+            'prompt' => 'Create an article.',
+            'instructions' => 'Use a fictional editorial voice.',
+            'project_context' => null,
+            'references' => [],
+        ],
+        'content' => newsArticleContent('Initial headline'),
+    ]);
+    $firstBranch = GeneratedContentVersion::factory()->for($generatedContent)->create([
+        'version_number' => 2,
+        'based_on_version_id' => $initial->id,
+        'context_snapshot' => ['operation' => 'continuation', 'content_type' => 'news_article'],
+        'content' => newsArticleContent('First continuation'),
+    ]);
+    $siblingBranch = GeneratedContentVersion::factory()->for($generatedContent)->userEdited()->create([
+        'version_number' => 3,
+        'based_on_version_id' => $initial->id,
+        'context_snapshot' => ['content_type' => 'news_article', 'prompt' => 'Inherited context.'],
+        'content' => newsArticleContent('Manual sibling'),
+    ]);
+    $latestBranch = GeneratedContentVersion::factory()->for($generatedContent)->create([
+        'version_number' => 4,
+        'based_on_version_id' => $firstBranch->id,
+        'context_snapshot' => null,
+        'content' => newsArticleContent('Legacy AI branch'),
+    ]);
+
+    $response = $this->actingAs($project->user)
+        ->get(versionShowRoute($project, $generatedContent, 3))
+        ->assertOk()
+        ->assertSee('Manual edit')
+        ->assertSee('Currently viewing')
+        ->assertSee('Latest is version 4')
+        ->assertSee('Initial AI generation')
+        ->assertSee('AI continuation')
+        ->assertSee('AI-generated')
+        ->assertSee('Based on version 1')
+        ->assertSee('version 2')
+        ->assertSee('Latest version')
+        ->assertSee('Version 4');
+
+    $response->assertSee('href="'.versionShowRoute($project, $generatedContent, 1).'"', false)
+        ->assertSee('href="'.versionShowRoute($project, $generatedContent, 2).'"', false)
+        ->assertSee('href="'.versionShowRoute($project, $generatedContent, 4).'"', false)
+        ->assertSee('aria-current="page"', false)
+        ->assertDontSee('href="'.versionShowRoute($project, $otherContent, (int) $initial->id).'"', false);
+
+    expect(str_contains(versionShowRoute($project, $generatedContent, 1), '/versions/'.$initial->id))->toBeFalse()
+        ->and($firstBranch->fresh()->based_on_version_id)->toBe($initial->id)
+        ->and($siblingBranch->fresh()->based_on_version_id)->toBe($initial->id)
+        ->and($latestBranch->fresh()->based_on_version_id)->toBe($firstBranch->id);
 
     Http::assertNothingSent();
 });
@@ -116,14 +180,36 @@ test('historical version url displays the selected version and its lineage', fun
         ->assertOk()
         ->assertSee('Historical headline')
         ->assertSee('Version 2')
-        ->assertSee('Manually edited')
+        ->assertSee('Manual edit')
         ->assertSee('Based on version 1')
-        ->assertDontSee('Latest version')
+        ->assertSee('Currently viewing')
+        ->assertSee('Latest is version 3')
         ->assertSee('Edit this version');
 
     expect(parse_url(versionShowRoute($project, $generatedContent, 2), PHP_URL_PATH))
         ->toBe('/projects/'.$project->uuid.'/generated-content/'.$generatedContent->uuid.'/versions/2');
     expect($historical->basedOnVersion->is($root))->toBeTrue();
+    Http::assertNothingSent();
+});
+
+test('a malformed cross-content source relationship is not rendered as a lineage link', function () {
+    $project = Project::factory()->create();
+    $generatedContent = GeneratedContent::factory()->for($project)->create();
+    $otherContent = GeneratedContent::factory()->for($project)->create();
+    $foreignSource = GeneratedContentVersion::factory()->for($otherContent)->create([
+        'version_number' => 1,
+    ]);
+    GeneratedContentVersion::factory()->for($generatedContent)->create([
+        'version_number' => 1,
+        'based_on_version_id' => $foreignSource->id,
+    ]);
+
+    $this->actingAs($project->user)
+        ->get(versionShowRoute($project, $generatedContent, 1))
+        ->assertOk()
+        ->assertDontSee('Based on version')
+        ->assertDontSee('href="'.versionShowRoute($project, $otherContent, 1).'"', false);
+
     Http::assertNothingSent();
 });
 
@@ -292,8 +378,8 @@ test('editing an older version appends a new branch without changing its source 
         ->assertSee('Initial parent title')
         ->assertSee('This name is separate from the headline or title inside each immutable version.')
         ->assertSee('Based on version 1')
-        ->assertSee('Based on version 2')
-        ->assertSee('Manually edited');
+        ->assertSee('version 2')
+        ->assertSee('Manual edit');
 
     Http::assertNothingSent();
 });
