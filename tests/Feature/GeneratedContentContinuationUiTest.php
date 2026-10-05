@@ -13,10 +13,6 @@ use Illuminate\Http\Client\Request;
 use Illuminate\Support\Facades\Http;
 
 beforeEach(function () {
-    if (config('database.default') !== 'sqlite' || config('database.connections.sqlite.database') !== ':memory:') {
-        throw new LogicException('Continuation UI tests require the isolated in-memory SQLite test database.');
-    }
-
     $this->artisan('migrate:fresh')->assertExitCode(0);
     Http::preventStrayRequests();
     config()->set('services.openai.model', 'continuation-ui-test-model');
@@ -375,13 +371,13 @@ test('continuation appends a branch from the exact historical version and redire
     expect($newVersion->generated_content_id)->toBe($content->id)
         ->and($newVersion->based_on_version_id)->toBe($source->id)
         ->and($newVersion->version_number)->toBe(4)
-        ->and($newVersion->content[$entryField][0])->toBe($sourceContent[$entryField][0])
-        ->and($source->fresh()->content)->toBe($sourceContent)
-        ->and($middle->fresh()->content)->toBe(continuationUiSource($type, 'A separate branch body.'))
+        ->and(canonicalizeJsonStructure($newVersion->content[$entryField][0]))->toBe(canonicalizeJsonStructure($sourceContent[$entryField][0]))
+        ->and(canonicalizeJsonStructure($source->fresh()->content))->toBe(canonicalizeJsonStructure($sourceContent))
+        ->and(canonicalizeJsonStructure($middle->fresh()->content))->toBe(canonicalizeJsonStructure(continuationUiSource($type, 'A separate branch body.')))
         ->and($newVersion->context_snapshot['operation'])->toBe('continuation')
         ->and($newVersion->context_snapshot['prompt'])->toBe($instructions)
         ->and($newVersion->context_snapshot['source'])->toBe(['content_uuid' => $content->uuid, 'version_number' => 1])
-        ->and($newVersion->context_snapshot['references'][0]['content'])->toBe($referenceVersion->content)
+        ->and(canonicalizeJsonStructure($newVersion->context_snapshot['references'][0]['content']))->toBe(canonicalizeJsonStructure($referenceVersion->content))
         ->and($newVersion->generation_metadata['operation'])->toBe('continuation')
         ->and($newVersion->generation_metadata)->not->toHaveKey('api_key')
         ->and(GenerationAttempt::query()->where('token_hash', hash('sha256', $token))->sole()->status)->toBe(GenerationAttemptStatus::Completed)

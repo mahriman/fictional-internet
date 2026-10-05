@@ -7,7 +7,6 @@ use App\Models\GeneratedContent;
 use App\Models\GeneratedContentVersion;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use InvalidArgumentException;
 
 uses(RefreshDatabase::class);
 

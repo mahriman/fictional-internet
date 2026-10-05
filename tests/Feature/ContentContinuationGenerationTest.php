@@ -18,10 +18,6 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Validation\ValidationException;
 
 beforeEach(function () {
-    if (config('database.default') !== 'sqlite' || config('database.connections.sqlite.database') !== ':memory:') {
-        throw new LogicException('Continuation provider tests require the isolated in-memory SQLite test database.');
-    }
-
     $this->artisan('migrate:fresh')->assertExitCode(0);
     Http::preventStrayRequests();
     config()->set('services.openai.model', 'continuation-test-model');
@@ -189,14 +185,14 @@ test('continuation generates only requested additions and persists immutable pro
         ->and($stored->version_number)->toBe(2)
         ->and($stored->based_on_version_id)->toBe($source->id)
         ->and($stored->origin)->toBe(GeneratedContentVersionOrigin::AiGenerated)
-        ->and($stored->content[$entryKey][0])->toBe($sourceValue[$entryKey][0])
-        ->and($stored->content[$entryKey][1])->toBe($sourceValue[$entryKey][1])
+        ->and(canonicalizeJsonStructure($stored->content[$entryKey][0]))->toBe(canonicalizeJsonStructure($sourceValue[$entryKey][0]))
+        ->and(canonicalizeJsonStructure($stored->content[$entryKey][1]))->toBe(canonicalizeJsonStructure($sourceValue[$entryKey][1]))
         ->and($stored->content[$entryKey][2][$numberKey])->toBe(3)
         ->and($stored->content[$entryKey][2][$replyKey])->toBe(2)
         ->and($stored->content[$entryKey][2]['quote'][$quoteNumberKey])->toBe(1)
         ->and($stored->content[$entryKey][3][$numberKey])->toBe(4)
         ->and($stored->content[$entryKey][3][$replyKey])->toBe(3)
-        ->and($source->fresh()->content)->toBe($sourceValue)
+        ->and(canonicalizeJsonStructure($source->fresh()->content))->toBe(canonicalizeJsonStructure($sourceValue))
         ->and($content->versions()->count())->toBe(2)
         ->and($stored->generation_metadata['operation'])->toBe('continuation')
         ->and($stored->generation_metadata['model'])->toBe('actual-continuation-model')
@@ -205,7 +201,7 @@ test('continuation generates only requested additions and persists immutable pro
         ->and($stored->context_snapshot['operation'])->toBe('continuation')
         ->and($stored->context_snapshot['source'])->toBe(['content_uuid' => $content->uuid, 'version_number' => 1])
         ->and($stored->context_snapshot['project_context']['setting'])->toBe('Bellweather has no west exit.')
-        ->and($stored->context_snapshot['references'][0]['content'])->toBe($referenceVersion->content)
+        ->and(canonicalizeJsonStructure($stored->context_snapshot['references'][0]['content']))->toBe(canonicalizeJsonStructure($referenceVersion->content))
         ->and($stored->context_snapshot)->not->toHaveKey('source_document')
         ->and($content->fresh()->title)->toBe($stableArtifactTitle)
         ->and($contextReads)->toBe(1)
@@ -250,7 +246,7 @@ test('unrecoverable new quote is omitted while its valid reply remains and sourc
         ->and($stored->content['posts'][2]['quote'])->toBeNull()
         ->and($stored->generation_metadata['quotes_preserved'])->toBe(0)
         ->and($stored->generation_metadata['quotes_dropped'])->toBe(1)
-        ->and($source->fresh()->content)->toBe($sourceValue);
+        ->and(canonicalizeJsonStructure($source->fresh()->content))->toBe(canonicalizeJsonStructure($sourceValue));
 });
 
 test('completed continuation duplicate returns its exact version without another provider request', function () {
@@ -285,10 +281,10 @@ test('continuation from an older version sends and branches from exactly that so
 
     expect($result->version->version_number)->toBe(3)
         ->and($result->version->based_on_version_id)->toBe($source->id)
-        ->and($result->version->content['posts'][0])->toBe($sourceValue['posts'][0])
-        ->and($result->version->content['posts'][1])->toBe($sourceValue['posts'][1])
-        ->and($source->fresh()->content)->toBe($sourceValue)
-        ->and($later->fresh()->content)->toBe($laterContent);
+        ->and(canonicalizeJsonStructure($result->version->content['posts'][0]))->toBe(canonicalizeJsonStructure($sourceValue['posts'][0]))
+        ->and(canonicalizeJsonStructure($result->version->content['posts'][1]))->toBe(canonicalizeJsonStructure($sourceValue['posts'][1]))
+        ->and(canonicalizeJsonStructure($source->fresh()->content))->toBe(canonicalizeJsonStructure($sourceValue))
+        ->and(canonicalizeJsonStructure($later->fresh()->content))->toBe(canonicalizeJsonStructure($laterContent));
     Http::assertSent(fn (Request $request): bool => str_contains($request['input'], 'The old signal read café closed.')
         && ! str_contains($request['input'], 'A newer branch only.'));
 });

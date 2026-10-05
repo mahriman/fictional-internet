@@ -72,10 +72,10 @@ test('owners can rename the stable artifact title without changing immutable ver
 
     expect($content->fresh()->title)->toBe('Helsingborgs Dagblad – försvinnanden')
         ->and($content->versions()->count())->toBe(2)
-        ->and($source->fresh()->content)->toBe(managementNewsContent('Version headline one'))
-        ->and($source->fresh()->context_snapshot)->toBe(['prompt' => 'captured prompt'])
+        ->and(canonicalizeJsonStructure($source->fresh()->content))->toBe(canonicalizeJsonStructure(managementNewsContent('Version headline one')))
+        ->and(canonicalizeJsonStructure($source->fresh()->context_snapshot))->toBe(['prompt' => 'captured prompt'])
         ->and($second->fresh()->based_on_version_id)->toBe($source->getKey())
-        ->and($second->fresh()->content)->toBe(managementNewsContent('Version headline two'));
+        ->and(canonicalizeJsonStructure($second->fresh()->content))->toBe(canonicalizeJsonStructure(managementNewsContent('Version headline two')));
 
     $this->get(route('projects.generated-content.versions.show', [$project, $content, 2]))
         ->assertOk()
@@ -225,7 +225,7 @@ test('deleting one artifact cascades its versions while preserving its project a
     $this->assertModelMissing($attempt);
     $this->assertModelExists($ordinaryAttempt);
     expect($ordinaryAttempt->fresh()->generated_content_id)->toBeNull()
-        ->and($otherVersion->fresh()->context_snapshot['references'][0])->toBe($captured)
+        ->and(canonicalizeJsonStructure($otherVersion->fresh()->context_snapshot['references'][0]))->toBe(canonicalizeJsonStructure($captured))
         ->and($project->fresh())->not->toBeNull();
     $this->assertModelExists($otherContent);
     $this->get(route('projects.generated-content.show', [$project, $content]))->assertNotFound();

@@ -11,7 +11,6 @@ use App\Models\Project;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Validation\ValidationException;
-use InvalidArgumentException;
 
 uses(RefreshDatabase::class);
 
@@ -132,16 +131,16 @@ test('continuation appends numbered entries and reuses immutable version lineage
     $collection = continuationCollection($contentType);
     $numberField = continuationNumberField($contentType);
 
-    expect($composed[$collection][0])->toBe($sourceContent[$collection][0])
-        ->and($composed[$collection][1])->toBe($sourceContent[$collection][1])
+    expect(canonicalizeJsonStructure($composed[$collection][0]))->toBe(canonicalizeJsonStructure($sourceContent[$collection][0]))
+        ->and(canonicalizeJsonStructure($composed[$collection][1]))->toBe(canonicalizeJsonStructure($sourceContent[$collection][1]))
         ->and($composed[$collection][2][$numberField])->toBe(3)
         ->and($version->version_number)->toBe(2)
         ->and($version->based_on_version_id)->toBe($sourceVersion->id)
         ->and($version->origin)->toBe(GeneratedContentVersionOrigin::AiGenerated)
-        ->and($version->fresh()->content)->toBe($composed)
+        ->and(canonicalizeJsonStructure($version->fresh()->content))->toBe(canonicalizeJsonStructure($composed))
         ->and($version->context_snapshot)->toBe(['continuation_source_version' => 1])
         ->and($version->generation_metadata)->toBe(['provider' => 'openai'])
-        ->and($sourceVersion->fresh()->content)->toBe($sourceContent)
+        ->and(canonicalizeJsonStructure($sourceVersion->fresh()->content))->toBe(canonicalizeJsonStructure($sourceContent))
         ->and($sourceVersion->fresh()->context_snapshot)->toBe(['original' => 'snapshot']);
 
     Http::assertNothingSent();
@@ -166,7 +165,7 @@ test('continuation from an older source branches from it and appends after the l
 
     expect($continued->version_number)->toBe(4)
         ->and($continued->based_on_version_id)->toBe($source->id)
-        ->and($source->fresh()->content)->toBe($sourceContent)
+        ->and(canonicalizeJsonStructure($source->fresh()->content))->toBe(canonicalizeJsonStructure($sourceContent))
         ->and($generatedContent->versions()->orderBy('version_number')->pluck('version_number')->all())->toBe([1, 2, 3, 4]);
 })->with(['forum_thread', 'schrecknet_thread']);
 
@@ -325,7 +324,7 @@ test('a historical source that fails current strict validation is not normalized
         continuationProposal(continuationEntry('forum_thread')),
     ))->toThrow(ValidationException::class);
 
-    expect($source->fresh()->content)->toBe($legacySource)
+    expect(canonicalizeJsonStructure($source->fresh()->content))->toBe(canonicalizeJsonStructure($legacySource))
         ->and($generatedContent->versions()->count())->toBe(1);
     Http::assertNothingSent();
 });

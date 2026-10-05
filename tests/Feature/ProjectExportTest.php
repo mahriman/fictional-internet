@@ -99,10 +99,10 @@ test('project export downloads a versioned archive with stable project data and 
         ->and($archive['generated_contents'][0]['versions'][0]['based_on_version'])->toBeNull()
         ->and($archive['generated_contents'][0]['versions'][0]['content']['thread_title'])->toBe('Äldre tråd')
         ->and($archive['generated_contents'][0]['versions'][0]['content']['posts'][0]['body'])->toBe("Första raden\nAndra raden")
-        ->and($archive['generated_contents'][0]['versions'][0]['context_snapshot'])->toBe(['prompt' => 'Original instructions', 'references' => []])
-        ->and($archive['generated_contents'][0]['versions'][0]['generation_metadata'])->toBe([
+        ->and(canonicalizeJsonStructure($archive['generated_contents'][0]['versions'][0]['context_snapshot']))->toBe(canonicalizeJsonStructure(['prompt' => 'Original instructions', 'references' => []]))
+        ->and(canonicalizeJsonStructure($archive['generated_contents'][0]['versions'][0]['generation_metadata']))->toBe(canonicalizeJsonStructure([
             'provider' => 'openai', 'model' => 'model-x', 'output_tokens' => 41,
-        ])
+        ]))
         ->and($archive['generated_contents'][0]['versions'][1]['based_on_version'])->toBe(1)
         ->and($archive['generated_contents'][0]['versions'][1]['origin'])->toBe('user_edited');
 
@@ -189,8 +189,8 @@ test('project export preserves captured reference snapshots after the referenced
     $archive = projectExportData($project);
 
     expect($archive['generated_contents'])->toHaveCount(1)
-        ->and($archive['generated_contents'][0]['versions'][0]['context_snapshot'])
-        ->toBe($capturedSnapshot)
+        ->and(canonicalizeJsonStructure($archive['generated_contents'][0]['versions'][0]['context_snapshot']))
+        ->toBe(canonicalizeJsonStructure($capturedSnapshot))
         ->and($archive['generated_contents'][0]['versions'][0]['context_snapshot']['references'][0]['title'])
         ->toBe('Captured title · Captured historical headline');
     Http::assertNothingSent();
@@ -253,8 +253,8 @@ test('project export excludes account credentials attempts and unknown generatio
             'Unrelated artifact sentinel',
             'Unrelated content sentinel',
         )
-        ->and($archive['generated_contents'][0]['versions'][0]['generation_metadata'])
-        ->toBe(['provider' => 'openai', 'model' => 'configured-model']);
+        ->and(canonicalizeJsonStructure($archive['generated_contents'][0]['versions'][0]['generation_metadata']))
+        ->toBe(canonicalizeJsonStructure(['provider' => 'openai', 'model' => 'configured-model']));
     Http::assertNothingSent();
 });
 

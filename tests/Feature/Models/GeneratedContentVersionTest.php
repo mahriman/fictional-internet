@@ -8,7 +8,6 @@ use App\Models\Project;
 use App\Models\User;
 use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
-use LogicException;
 
 uses(RefreshDatabase::class);
 

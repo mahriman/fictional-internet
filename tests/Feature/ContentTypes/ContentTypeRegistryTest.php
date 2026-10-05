@@ -3,7 +3,6 @@
 use App\ContentTypes\ContentTypeRegistry;
 use App\ContentTypes\Definitions\NewsArticleType;
 use App\ContentTypes\Definitions\SchreckNetThreadType;
-use InvalidArgumentException;
 
 test('the registry resolves the news article definition by its stable key', function () {
     $definition = app(ContentTypeRegistry::class)->get('news_article');
