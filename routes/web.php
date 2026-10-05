@@ -59,6 +59,7 @@ Route::middleware('auth')->group(function () {
     Route::get('/projects/{project}/generated-content/create', [GeneratedContentController::class, 'create'])
         ->name('projects.generated-content.create');
     Route::post('/projects/{project}/generated-content', [GeneratedContentController::class, 'store'])
+        ->middleware('throttle:generation')
         ->name('projects.generated-content.store');
     Route::patch('/projects/{project}/generated-content/{generatedContent}', [GeneratedContentManagementController::class, 'update'])
         ->scopeBindings()
@@ -94,6 +95,7 @@ Route::middleware('auth')->group(function () {
         ->scopeBindings()
         ->name('projects.generated-content.versions.continuations.create');
     Route::post('/projects/{project}/generated-content/{generatedContent}/versions/{versionNumber}/continuation', [GeneratedContentContinuationController::class, 'store'])
+        ->middleware('throttle:generation')
         ->where('versionNumber', '[1-9][0-9]*')
         ->scopeBindings()
         ->name('projects.generated-content.versions.continuations.store');

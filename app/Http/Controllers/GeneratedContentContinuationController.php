@@ -63,7 +63,7 @@ class GeneratedContentContinuationController extends Controller
         $generatedContents = $project->generatedContents()
             ->select(['id', 'project_id', 'uuid', 'content_type', 'title'])
             ->with(['versions' => static fn (Relation $query) => $query
-                ->select(['id', 'generated_content_id', 'version_number', 'content'])
+                ->select(['id', 'generated_content_id', 'version_number'])
                 ->reorder()
                 ->orderByDesc('version_number')])
             ->latest('created_at')

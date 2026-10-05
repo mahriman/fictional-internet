@@ -10,6 +10,9 @@ use App\Services\Export\ContentDocumentRenderer;
 use App\Services\Export\ExportRenderLimiter;
 use App\Services\Export\FirefoxWebDriverBiDiRenderer;
 use App\Services\OpenAI\OpenAiClient;
+use Illuminate\Cache\RateLimiting\Limit;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\ServiceProvider;
 
 class AppServiceProvider extends ServiceProvider
@@ -40,6 +43,13 @@ class AppServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        //
+        RateLimiter::for('generation', static fn (Request $request): Limit => Limit::perMinute(10)
+            ->by('generation:user:'.($request->user()?->getAuthIdentifier() ?? 'unauthenticated'))
+            ->response(static fn (Request $request, array $headers) => response()->view(
+                'errors.generation-rate-limited',
+                ['project' => $request->route('project')],
+                429,
+                $headers,
+            )));
     }
 }

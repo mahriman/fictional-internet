@@ -372,7 +372,8 @@ test('renamed artifacts retain version access, reference selection and HTML expo
         ->assertSee('Version headline remains');
     $this->get(route('projects.generated-content.create', $project))
         ->assertOk()
-        ->assertSee('Version headline remains')
+        ->assertSee('News article · New artifact name · Version 1')
+        ->assertDontSee('Version headline remains')
         ->assertSee($content->uuid.':1');
     $this->get(route('projects.generated-content.versions.export', [$project, $content, $version->version_number, 'html']))
         ->assertOk();

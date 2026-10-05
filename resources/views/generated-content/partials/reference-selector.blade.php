@@ -11,10 +11,8 @@
                 @php($referenceType = $contentTypes[$generatedContent->content_type] ?? null)
                 @php($referenceTypeLabel = $referenceType?->label() ?? $generatedContent->content_type)
                 @foreach ($generatedContent->versions as $referenceVersion)
-                    @php($referenceTitle = $referenceType?->titleFromContent(is_array($referenceVersion->content) ? $referenceVersion->content : []))
-                    @php($referenceTitle = filled($referenceTitle) ? $referenceTitle : 'Untitled')
                     @php($referenceValue = $generatedContent->uuid.':'.$referenceVersion->version_number)
-                    <option value="{{ $referenceValue }}" @selected(is_array($selectedReferences) && in_array($referenceValue, $selectedReferences, true))>{{ $referenceTypeLabel }} · {{ $referenceTitle }} · Version {{ $referenceVersion->version_number }}</option>
+                    <option value="{{ $referenceValue }}" @selected(is_array($selectedReferences) && in_array($referenceValue, $selectedReferences, true))>{{ $referenceTypeLabel }} · {{ $generatedContent->title }} · Version {{ $referenceVersion->version_number }}</option>
                 @endforeach
             @endforeach
         </select>

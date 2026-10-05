@@ -7,8 +7,10 @@ use App\Models\GeneratedContent;
 use App\Models\GeneratedContentVersion;
 use App\Models\Project;
 use App\Models\User;
+use Illuminate\Database\Events\QueryExecuted;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Http\Client\Request;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Str;
 
@@ -168,7 +170,7 @@ test('generation without references preserves the existing project-context input
     expect($version->context_snapshot['references'])->toBe([]);
 });
 
-test('the generation form exposes only public content UUID and version selections', function () {
+test('the generation form exposes stable artifact titles and public UUID version selections without loading version content', function () {
     $project = Project::factory()->create();
     $content = GeneratedContent::factory()->for($project)->create();
     $content->versions()->create([
@@ -177,12 +179,23 @@ test('the generation form exposes only public content UUID and version selection
         'content' => referenceArticle('Visible source title', 'Body.'),
     ]);
 
+    $loadedContentColumn = false;
+    DB::listen(function (QueryExecuted $query) use (&$loadedContentColumn): void {
+        if (str_contains(strtolower($query->sql), 'generated_content_versions')
+            && str_contains(strtolower($query->sql), 'select')
+            && preg_match('/\bcontent\b/i', $query->sql) === 1) {
+            $loadedContentColumn = true;
+        }
+    });
+
     $this->actingAs($project->user)
         ->get(route('projects.generated-content.create', $project))
         ->assertOk()
         ->assertSee($content->uuid.':1', false)
-        ->assertSee('News article · Visible source title · Version 1')
+        ->assertSee('News article · '.$content->title.' · Version 1')
         ->assertDontSee('value="'.$content->id.':1"', false);
+
+    expect($loadedContentColumn)->toBeFalse();
 });
 
 test('duplicate malformed nonexistent cross-project and excessive references are rejected before provider requests', function () {

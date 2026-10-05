@@ -32,6 +32,7 @@ php artisan test --compact \
     tests/Feature/GeneratedContentReferencesTest.php \
     tests/Feature/GeneratedContentUiTest.php \
     tests/Feature/GeneratedContentVersionUiTest.php \
+    tests/Feature/GenerationOperationalSafetyTest.php \
     tests/Feature/GenerationAttemptTest.php \
     tests/Feature/OpenAiCredentialResolutionTest.php \
     tests/Feature/ProjectContextManagementTest.php \
