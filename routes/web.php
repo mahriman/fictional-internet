@@ -6,6 +6,7 @@ use App\Http\Controllers\Auth\RegisteredUserController;
 use App\Http\Controllers\GeneratedContentContinuationController;
 use App\Http\Controllers\GeneratedContentController;
 use App\Http\Controllers\GeneratedContentExportController;
+use App\Http\Controllers\GeneratedContentManagementController;
 use App\Http\Controllers\ProjectContextController;
 use App\Http\Controllers\ProjectController;
 use Illuminate\Support\Facades\Route;
@@ -40,6 +41,12 @@ Route::middleware('auth')->group(function () {
         ->name('projects.generated-content.create');
     Route::post('/projects/{project}/generated-content', [GeneratedContentController::class, 'store'])
         ->name('projects.generated-content.store');
+    Route::patch('/projects/{project}/generated-content/{generatedContent}', [GeneratedContentManagementController::class, 'update'])
+        ->scopeBindings()
+        ->name('projects.generated-content.update');
+    Route::delete('/projects/{project}/generated-content/{generatedContent}', [GeneratedContentManagementController::class, 'destroy'])
+        ->scopeBindings()
+        ->name('projects.generated-content.destroy');
     Route::get('/projects/{project}/generated-content/{generatedContent}', [GeneratedContentController::class, 'show'])
         ->scopeBindings()
         ->name('projects.generated-content.show');

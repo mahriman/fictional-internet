@@ -289,7 +289,8 @@ test('editing an older version appends a new branch without changing its source 
     $this->get($expectedUrl)
         ->assertOk()
         ->assertSee('Edited old headline')
-        ->assertDontSee('Initial parent title')
+        ->assertSee('Initial parent title')
+        ->assertSee('This name is separate from the headline or title inside each immutable version.')
         ->assertSee('Based on version 1')
         ->assertSee('Based on version 2')
         ->assertSee('Manually edited');

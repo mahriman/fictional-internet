@@ -304,7 +304,8 @@ test('SchreckNet editing creates an immutable version with preserved numbers, li
         ->get(route('projects.generated-content.versions.show', [$project, $generatedContent, 1]))
         ->assertOk()
         ->assertSee($sourceContent['thread_title'])
-        ->assertDontSee('Stale overview title');
+        ->assertSee('Stale overview title')
+        ->assertSee('This name is separate from the headline or title inside each immutable version.');
 
     $submitted = schreckNetEditInput($sourceContent);
     $submitted['thread_title'] = 'Edited clandestine thread';
@@ -325,7 +326,8 @@ test('SchreckNet editing creates an immutable version with preserved numbers, li
         ->and($edited->origin)->toBe(GeneratedContentVersionOrigin::UserEdited)
         ->and($edited->based_on_version_id)->toBe($source->id)
         ->and($edited->context_snapshot)->toBe($source->context_snapshot)
-        ->and($edited->generation_metadata)->toBeNull();
+        ->and($edited->generation_metadata)->toBeNull()
+        ->and($generatedContent->fresh()->title)->toBe('Stale overview title');
     Http::assertNothingSent();
 });
 

@@ -156,6 +156,7 @@ function createContinuationContent(string $type, array $source = []): array
 
 test('continuation generates only requested additions and persists immutable provenance for both types', function (string $type) {
     [$project, $content, $source] = createContinuationContent($type);
+    $stableArtifactTitle = $content->title;
     $sourceValue = $source->content;
     $token = issueContinuationAttempt($content, $source);
     $project->context()->create(['setting' => 'Bellweather has no west exit.']);
@@ -206,6 +207,7 @@ test('continuation generates only requested additions and persists immutable pro
         ->and($stored->context_snapshot['project_context']['setting'])->toBe('Bellweather has no west exit.')
         ->and($stored->context_snapshot['references'][0]['content'])->toBe($referenceVersion->content)
         ->and($stored->context_snapshot)->not->toHaveKey('source_document')
+        ->and($content->fresh()->title)->toBe($stableArtifactTitle)
         ->and($contextReads)->toBe(1)
         ->and(json_encode([$stored->content, $stored->context_snapshot, $stored->generation_metadata], JSON_THROW_ON_ERROR))
         ->not->toContain('personal-continuation-key')

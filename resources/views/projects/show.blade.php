@@ -63,13 +63,45 @@
             <p class="text-sm font-semibold uppercase tracking-[0.16em] text-indigo-700">Workspace</p>
             <h2 id="generated-content-heading" class="mt-2 text-xl font-semibold text-slate-950">Generated content</h2>
         </div>
-        @if ($generatedContents->isEmpty())
-            <div class="py-12 text-center">
-                <div class="mx-auto grid size-12 place-items-center rounded-full bg-slate-100 text-slate-500" aria-hidden="true">✦</div>
-                <p class="mt-4 font-medium text-slate-900">No content has been generated for this project yet.</p>
-                <p class="mt-2 text-sm text-slate-600">Generated stories and conversations will appear here.</p>
-                <a href="{{ route('projects.generated-content.create', $project) }}" class="mt-5 inline-flex rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Generate your first content</a>
+        <form method="GET" action="{{ route('projects.show', $project) }}" class="mt-5 grid gap-4 rounded-xl bg-slate-50 p-4 sm:grid-cols-[minmax(0,1fr)_minmax(12rem,0.7fr)_auto] sm:items-end">
+            <div>
+                <label for="content-search" class="block text-sm font-medium text-slate-700">Search artifact titles</label>
+                <input id="content-search" name="search" type="search" maxlength="255" value="{{ $searchTerm }}" class="mt-1 block w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-indigo-600 focus:ring-indigo-600" placeholder="Search this project">
             </div>
+            <div>
+                <label for="content-type-filter" class="block text-sm font-medium text-slate-700">Content type</label>
+                <select id="content-type-filter" name="content_type" class="mt-1 block w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-indigo-600 focus:ring-indigo-600">
+                    <option value="">All content types</option>
+                    @foreach ($contentTypes as $key => $definition)
+                        <option value="{{ $key }}" @selected($contentTypeFilter === $key)>{{ $definition->label() }}</option>
+                    @endforeach
+                </select>
+            </div>
+            <div class="flex flex-wrap gap-2">
+                <button type="submit" class="inline-flex justify-center rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Apply filters</button>
+                @if ($searchTerm !== '' || $contentTypeFilter !== null || $searchError !== null || $contentTypeError !== null)
+                    <a href="{{ route('projects.show', $project) }}" class="inline-flex justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Clear</a>
+                @endif
+            </div>
+        </form>
+        @if ($searchError || $contentTypeError)
+            <p role="alert" class="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">{{ $searchError ?? $contentTypeError }}</p>
+        @endif
+        @if ($generatedContents->isEmpty())
+            @if ($hasAnyGeneratedContent)
+                <div class="py-12 text-center">
+                    <p class="font-medium text-slate-900">No content matches these filters.</p>
+                    <p class="mt-2 text-sm text-slate-600">Clear the search and type filter to see all generated content in this project.</p>
+                    <a href="{{ route('projects.show', $project) }}" class="mt-5 inline-flex rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Clear filters</a>
+                </div>
+            @else
+                <div class="py-12 text-center">
+                    <div class="mx-auto grid size-12 place-items-center rounded-full bg-slate-100 text-slate-500" aria-hidden="true">✦</div>
+                    <p class="mt-4 font-medium text-slate-900">No content has been generated for this project yet.</p>
+                    <p class="mt-2 text-sm text-slate-600">Generated stories and conversations will appear here.</p>
+                    <a href="{{ route('projects.generated-content.create', $project) }}" class="mt-5 inline-flex rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Generate your first content</a>
+                </div>
+            @endif
         @else
             <ul class="divide-y divide-slate-100">
                 @foreach ($generatedContents as $generatedContent)
@@ -82,12 +114,17 @@
                                     <p class="font-semibold text-slate-950 group-hover:text-indigo-700">{{ $generatedContent->title ?: $contentTypeLabel }}</p>
                                     <p class="mt-1 text-sm text-slate-600">{{ $contentTypeLabel }}</p>
                                 </div>
-                                <time class="text-sm text-slate-500" datetime="{{ $generatedContent->created_at->toIso8601String() }}">{{ $generatedContent->created_at->format('M j, Y') }}</time>
+                                @if ($generatedContent->latest_version_number !== null && $generatedContent->latest_version_activity_at !== null)
+                                    <p class="text-sm text-slate-500">Version {{ $generatedContent->latest_version_number }} · Updated <time datetime="{{ $generatedContent->latest_version_activity_at->toIso8601String() }}">{{ $generatedContent->latest_version_activity_at->format('M j, Y · g:i A') }}</time></p>
+                                @else
+                                    <p class="text-sm text-slate-500">No versions yet · Created {{ $generatedContent->created_at->format('M j, Y') }}</p>
+                                @endif
                             </div>
                         </a>
                     </li>
                 @endforeach
             </ul>
+            <div class="mt-6">{{ $generatedContents->links() }}</div>
         @endif
     </section>
 

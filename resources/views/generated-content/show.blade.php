@@ -5,6 +5,40 @@
 @section('content')
     <section class="mx-auto max-w-4xl">
         <a href="{{ route('projects.show', $project) }}" class="text-sm font-medium text-indigo-700 hover:text-indigo-900">← Back to {{ $project->name }}</a>
+        <section class="mt-5 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6" aria-labelledby="artifact-management-heading">
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <p class="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">Project artifact</p>
+                    <h2 id="artifact-management-heading" class="mt-1 break-words text-lg font-semibold text-slate-950">{{ $generatedContent->title ?: $contentTypeLabel }}</h2>
+                    <p class="mt-1 text-sm text-slate-600">This name is separate from the headline or title inside each immutable version.</p>
+                </div>
+                <details @if ($errors->has('title')) open @endif class="shrink-0">
+                    <summary class="cursor-pointer rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Rename artifact</summary>
+                    <form method="POST" action="{{ route('projects.generated-content.update', ['project' => $project, 'generatedContent' => $generatedContent, 'version' => $version->version_number]) }}" class="mt-3 w-full rounded-xl border border-slate-200 bg-slate-50 p-4 sm:w-96">
+                        @csrf
+                        @method('PATCH')
+                        <label for="artifact-title" class="block text-sm font-medium text-slate-700">Stable project title</label>
+                        <input id="artifact-title" name="title" type="text" maxlength="255" required value="{{ old('title', $generatedContent->title) }}" aria-describedby="artifact-title-help" class="mt-1 block w-full rounded-lg border-slate-300 text-sm shadow-sm focus:border-indigo-600 focus:ring-indigo-600">
+                        <p id="artifact-title-help" class="mt-2 text-xs leading-5 text-slate-600">Renaming the artifact does not change any version's content or headline.</p>
+                        @error('title')
+                            <p role="alert" class="mt-2 text-sm text-rose-700">{{ $message }}</p>
+                        @enderror
+                        <button type="submit" class="mt-3 rounded-lg bg-indigo-700 px-3 py-2 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Save title</button>
+                    </form>
+                </details>
+            </div>
+            <div class="mt-5 border-t border-rose-100 pt-4 sm:flex sm:items-center sm:justify-between sm:gap-4">
+                <div>
+                    <h2 class="text-sm font-semibold text-rose-900">Delete artifact</h2>
+                    <p class="mt-1 text-sm leading-5 text-slate-600">Permanently deletes this artifact and its complete immutable version history. The project and its other content remain.</p>
+                </div>
+                <form method="POST" action="{{ route('projects.generated-content.destroy', ['project' => $project, 'generatedContent' => $generatedContent]) }}" onsubmit="return window.confirm('Permanently delete this artifact and its complete version history? This cannot be undone.')" class="mt-3 shrink-0 sm:mt-0">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="w-full rounded-lg border border-rose-300 px-3 py-2 text-sm font-semibold text-rose-800 hover:bg-rose-50 focus:outline-2 focus:outline-offset-2 focus:outline-rose-700 sm:w-auto">Delete artifact and versions</button>
+                </form>
+            </div>
+        </section>
         <article class="mt-5 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
             <header class="border-b border-slate-100 px-5 py-5 sm:px-8">
                 <p class="text-sm font-semibold uppercase tracking-[0.16em] text-indigo-700">{{ $contentTypeLabel }}</p>
