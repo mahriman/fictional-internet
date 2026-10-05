@@ -25,6 +25,7 @@
             <button type="submit" class="w-full rounded-lg bg-indigo-700 px-4 py-3 text-sm font-semibold text-white shadow-sm hover:bg-indigo-800 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Sign in</button>
         </form>
 
+        <p class="mt-4 text-center text-sm"><a href="{{ route('password.request') }}" class="font-semibold text-indigo-700 hover:text-indigo-900">Forgot password?</a></p>
         <p class="mt-6 text-center text-sm text-slate-600">New here? <a href="{{ route('register') }}" class="font-semibold text-indigo-700 hover:text-indigo-900">Create an account</a></p>
     </section>
 @endsection
