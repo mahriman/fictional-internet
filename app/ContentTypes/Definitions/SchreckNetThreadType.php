@@ -5,9 +5,10 @@ namespace App\ContentTypes\Definitions;
 use App\ContentTypes\Contracts\ContentTypeDefinition;
 use App\ContentTypes\Contracts\ContinuableContentType;
 use App\ContentTypes\Contracts\GeneratedContentNormalizer;
+use App\ContentTypes\Contracts\GeneratedContinuationNormalizer;
 use App\ContentTypes\DiscussionSemantics;
 
-class SchreckNetThreadType implements ContentTypeDefinition, ContinuableContentType, GeneratedContentNormalizer
+class SchreckNetThreadType implements ContentTypeDefinition, ContinuableContentType, GeneratedContentNormalizer, GeneratedContinuationNormalizer
 {
     public const MAX_MESSAGES = 30;
 
@@ -31,6 +32,11 @@ class SchreckNetThreadType implements ContentTypeDefinition, ContinuableContentT
     public function continuationNumberField(): string
     {
         return 'message_number';
+    }
+
+    public function continuationInstructions(): string
+    {
+        return 'Continue the existing SchreckNet discussion with exactly the requested number of new messages. Return only those new messages in the proposal entries array. Do not reproduce or rewrite the source document. Proposed messages are numbered by their final positions after the source messages. They may reply to or quote any earlier source message or earlier proposed message. Use only valid earlier message numbers. Copy quoted text exactly from the referenced message body, and set quote to null when an exact excerpt is unavailable.';
     }
 
     public function presentationView(): ?string
@@ -171,6 +177,18 @@ INSTRUCTIONS;
             'quote_number' => 'message_number',
             'quote_text' => 'text',
         ]);
+    }
+
+    public function normalizeGeneratedContinuation(array $combinedContent, int $sourceEntryCount): array
+    {
+        return DiscussionSemantics::normalizeGeneratedQuotes($combinedContent, [
+            'collection' => 'messages',
+            'number' => 'message_number',
+            'body' => 'body',
+            'quote' => 'quote',
+            'quote_number' => 'message_number',
+            'quote_text' => 'text',
+        ], $sourceEntryCount);
     }
 
     /**

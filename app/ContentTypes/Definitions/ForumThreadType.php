@@ -5,9 +5,10 @@ namespace App\ContentTypes\Definitions;
 use App\ContentTypes\Contracts\ContentTypeDefinition;
 use App\ContentTypes\Contracts\ContinuableContentType;
 use App\ContentTypes\Contracts\GeneratedContentNormalizer;
+use App\ContentTypes\Contracts\GeneratedContinuationNormalizer;
 use App\ContentTypes\DiscussionSemantics;
 
-class ForumThreadType implements ContentTypeDefinition, ContinuableContentType, GeneratedContentNormalizer
+class ForumThreadType implements ContentTypeDefinition, ContinuableContentType, GeneratedContentNormalizer, GeneratedContinuationNormalizer
 {
     public const MAX_POSTS = 20;
 
@@ -31,6 +32,11 @@ class ForumThreadType implements ContentTypeDefinition, ContinuableContentType, 
     public function continuationNumberField(): string
     {
         return 'post_number';
+    }
+
+    public function continuationInstructions(): string
+    {
+        return 'Continue the existing forum discussion with exactly the requested number of new posts. Return only those new posts in the proposal entries array. Do not reproduce or rewrite the source document. Proposed posts are numbered by their final positions after the source posts. They may reply to or quote any earlier source post or earlier proposed post. Use only valid earlier post numbers. Copy quoted text exactly from the referenced post body, and set quote to null when an exact excerpt is unavailable.';
     }
 
     public function presentationView(): ?string
@@ -158,6 +164,18 @@ INSTRUCTIONS;
             'quote_number' => 'post_number',
             'quote_text' => 'text',
         ]);
+    }
+
+    public function normalizeGeneratedContinuation(array $combinedContent, int $sourceEntryCount): array
+    {
+        return DiscussionSemantics::normalizeGeneratedQuotes($combinedContent, [
+            'collection' => 'posts',
+            'number' => 'post_number',
+            'body' => 'body',
+            'quote' => 'quote',
+            'quote_number' => 'post_number',
+            'quote_text' => 'text',
+        ], $sourceEntryCount);
     }
 
     public function editingValidationRules(array $sourceContent): array

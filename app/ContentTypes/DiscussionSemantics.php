@@ -18,7 +18,7 @@ class DiscussionSemantics
      *     quotes_dropped: int
      * }
      */
-    public static function normalizeGeneratedQuotes(array $content, array $fields): array
+    public static function normalizeGeneratedQuotes(array $content, array $fields, int $firstIndexToNormalize = 0): array
     {
         $counts = [
             'quotes_preserved' => 0,
@@ -34,6 +34,10 @@ class DiscussionSemantics
         $items = &$content[$fields['collection']];
 
         foreach ($items as $index => &$item) {
+            if ($index < $firstIndexToNormalize) {
+                continue;
+            }
+
             if (! is_array($item)) {
                 continue;
             }

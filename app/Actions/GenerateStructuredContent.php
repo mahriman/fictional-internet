@@ -38,44 +38,15 @@ class GenerateStructuredContent
             );
         }
 
-        $response = $this->openAiClient->createResponse(
-            instructions: $definition->promptInstructions(),
-            input: $prompt,
-            apiKey: $apiKey,
-            outputSchema: $schema,
+        $generated = $this->requestStructuredObject(
+            $contentType,
+            $definition->promptInstructions(),
+            $prompt,
+            $schema,
+            $apiKey,
         );
-
-        try {
-            $decodedObject = json_decode($response->text, flags: JSON_THROW_ON_ERROR);
-        } catch (JsonException $exception) {
-            throw new StructuredContentGenerationException(
-                'The generated response was not valid JSON.',
-                diagnosticCategory: 'json_decode',
-                previous: $exception,
-                diagnosticCodes: ['invalid_json'],
-                diagnosticContext: $this->responseDiagnosticContext($response, 'json_decode'),
-            );
-        }
-
-        if (! $decodedObject instanceof stdClass) {
-            throw new StructuredContentGenerationException(
-                'The generated response must be a JSON object.',
-                diagnosticCategory: 'json_root',
-                diagnosticCodes: ['unexpected_json_root'],
-                diagnosticContext: $this->responseDiagnosticContext($response, 'json_root'),
-            );
-        }
-
-        $content = json_decode($response->text, true, flags: JSON_THROW_ON_ERROR);
-
-        if (! is_array($content)) {
-            throw new StructuredContentGenerationException(
-                'The generated response must be a JSON object.',
-                diagnosticCategory: 'json_root',
-                diagnosticCodes: ['unexpected_json_root'],
-                diagnosticContext: $this->responseDiagnosticContext($response, 'json_root'),
-            );
-        }
+        $response = $generated->response;
+        $content = $generated->content;
 
         [$entryCollection, $entryCount] = $this->structuredEntryCount($content, $schema);
 
@@ -154,6 +125,86 @@ class GenerateStructuredContent
     }
 
     /**
+     * Request a strict structured object whose domain validation is performed by a caller-specific composer.
+     *
+     * @param  array<string, mixed>  $proposalSchema
+     */
+    public function handleProposal(
+        string $contentType,
+        string $instructions,
+        string $input,
+        array $proposalSchema,
+        ?string $apiKey = null,
+    ): StructuredContentGenerationResult {
+        $this->contentTypes->get($contentType);
+
+        if (($proposalSchema['type'] ?? null) !== 'object'
+            || ! is_array($proposalSchema['properties'] ?? null)
+            || $proposalSchema['properties'] === []) {
+            throw new StructuredContentGenerationException(
+                'The continuation proposal schema is invalid.',
+                diagnosticCategory: 'schema_definition',
+                diagnosticCodes: ['continuation_schema_invalid'],
+                diagnosticContext: ['operation' => 'continuation', 'content_type' => $contentType],
+            );
+        }
+
+        return $this->requestStructuredObject($contentType, $instructions, $input, $proposalSchema, $apiKey);
+    }
+
+    /**
+     * @param  array<string, mixed>  $schema
+     */
+    private function requestStructuredObject(
+        string $contentType,
+        string $instructions,
+        string $input,
+        array $schema,
+        ?string $apiKey,
+    ): StructuredContentGenerationResult {
+        $response = $this->openAiClient->createResponse(
+            instructions: $instructions,
+            input: $input,
+            apiKey: $apiKey,
+            outputSchema: $schema,
+        );
+
+        try {
+            $decodedObject = json_decode($response->text, flags: JSON_THROW_ON_ERROR);
+        } catch (JsonException $exception) {
+            throw new StructuredContentGenerationException(
+                'The generated response was not valid JSON.',
+                diagnosticCategory: 'json_decode',
+                previous: $exception,
+                diagnosticCodes: ['invalid_json'],
+                diagnosticContext: $this->responseDiagnosticContext($response, 'json_decode', contentType: $contentType),
+            );
+        }
+
+        if (! $decodedObject instanceof stdClass) {
+            throw new StructuredContentGenerationException(
+                'The generated response must be a JSON object.',
+                diagnosticCategory: 'json_root',
+                diagnosticCodes: ['unexpected_json_root'],
+                diagnosticContext: $this->responseDiagnosticContext($response, 'json_root', contentType: $contentType),
+            );
+        }
+
+        $content = json_decode($response->text, true, flags: JSON_THROW_ON_ERROR);
+
+        if (! is_array($content)) {
+            throw new StructuredContentGenerationException(
+                'The generated response must be a JSON object.',
+                diagnosticCategory: 'json_root',
+                diagnosticCodes: ['unexpected_json_root'],
+                diagnosticContext: $this->responseDiagnosticContext($response, 'json_root', contentType: $contentType),
+            );
+        }
+
+        return new StructuredContentGenerationResult($content, $response);
+    }
+
+    /**
      * @param  array<string, mixed>  $content
      * @param  array<string, mixed>  $schema
      * @return array{0: string|null, 1: int|null}
@@ -213,9 +264,11 @@ class GenerateStructuredContent
         ?string $entryCollection = null,
         ?int $entryCount = null,
         ?array $normalizationDiagnostics = null,
+        ?string $contentType = null,
     ): array {
         return array_filter([
             'diagnostic_stage' => $stage,
+            'content_type' => $contentType,
             'provider_status' => $response->providerStatus,
             'http_status' => $response->httpStatus,
             'requested_max_output_tokens' => $response->requestedMaxOutputTokens,

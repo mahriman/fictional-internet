@@ -27,6 +27,15 @@ class ComposeGeneratedContentContinuation
         GeneratedContentVersion $sourceVersion,
         array $proposal,
     ): array {
+        $source = $this->resolve($generatedContent, $sourceVersion);
+
+        return $this->composer->compose($source->definition, $source->sourceContent, $proposal);
+    }
+
+    public function resolve(
+        GeneratedContent $generatedContent,
+        GeneratedContentVersion $sourceVersion,
+    ): ResolvedGeneratedContentContinuation {
         if (! $generatedContent->exists || $generatedContent->getKey() === null) {
             throw new InvalidArgumentException('A continuation requires an existing generated content record.');
         }
@@ -54,6 +63,13 @@ class ComposeGeneratedContentContinuation
             throw new InvalidArgumentException('The source version does not contain a structured document.');
         }
 
-        return $this->composer->compose($definition, $persistedSource->content, $proposal);
+        $this->composer->proposalSchema($definition, $persistedSource->content);
+
+        return new ResolvedGeneratedContentContinuation(
+            $persistedContent,
+            $persistedSource,
+            $definition,
+            $persistedSource->content,
+        );
     }
 }

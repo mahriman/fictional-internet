@@ -4,6 +4,7 @@ namespace App\ContentTypes;
 
 use App\ContentTypes\Contracts\ContentTypeDefinition;
 use App\ContentTypes\Contracts\ContinuableContentType;
+use App\ContentTypes\Contracts\GeneratedContinuationNormalizer;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\ValidationException;
 use InvalidArgumentException;
@@ -16,19 +17,22 @@ class ContentContinuationComposer
      * @param  array<string, mixed>  $sourceContent
      * @return array<string, mixed>
      */
-    public function proposalSchema(ContentTypeDefinition $definition, array $sourceContent): array
+    public function proposalSchema(ContentTypeDefinition $definition, array $sourceContent, ?int $requestedEntryCount = null): array
     {
         $sourceContent = $this->validateDocument($definition, $sourceContent, 'source');
 
-        return $this->buildProposalSchema($definition, $sourceContent);
+        return $this->buildProposalSchema($definition, $sourceContent, $requestedEntryCount);
     }
 
     /**
      * @param  array<string, mixed>  $sourceContent
      * @return array<string, mixed>
      */
-    private function buildProposalSchema(ContentTypeDefinition $definition, array $sourceContent): array
-    {
+    private function buildProposalSchema(
+        ContentTypeDefinition $definition,
+        array $sourceContent,
+        ?int $requestedEntryCount = null,
+    ): array {
         $continuation = $this->continuationType($definition);
         $collection = $continuation->continuationCollectionField();
         $numberField = $continuation->continuationNumberField();
@@ -57,6 +61,12 @@ class ContentContinuationComposer
             ]);
         }
 
+        if ($requestedEntryCount !== null && ($requestedEntryCount < 1 || $requestedEntryCount > $maximumEntries)) {
+            throw ValidationException::withMessages([
+                'entry_count' => ['The requested number of entries exceeds the remaining capacity for this discussion.'],
+            ]);
+        }
+
         $entrySchema = $collectionSchema['items'];
         unset($entrySchema['properties'][$numberField]);
         $entrySchema['required'] = array_values(array_diff($entrySchema['required'] ?? [], [$numberField]));
@@ -67,8 +77,8 @@ class ContentContinuationComposer
             'properties' => [
                 'entries' => [
                     'type' => 'array',
-                    'minItems' => 1,
-                    'maxItems' => $maximumEntries,
+                    'minItems' => $requestedEntryCount ?? 1,
+                    'maxItems' => $requestedEntryCount ?? $maximumEntries,
                     'items' => $entrySchema,
                 ],
             ],
@@ -92,19 +102,37 @@ class ContentContinuationComposer
         ContentTypeDefinition $definition,
         array $sourceContent,
         array $proposal,
+        ?int $requestedEntryCount = null,
     ): array {
+        return $this->composeGenerated($definition, $sourceContent, $proposal, $requestedEntryCount, false)->content;
+    }
+
+    public function composeGenerated(
+        ContentTypeDefinition $definition,
+        array $sourceContent,
+        array $proposal,
+        ?int $requestedEntryCount,
+        bool $normalizeQuotes,
+    ): ComposedContentContinuation {
         $continuation = $this->continuationType($definition);
         $collection = $continuation->continuationCollectionField();
         $numberField = $continuation->continuationNumberField();
 
         $sourceContent = $this->validateDocument($definition, $sourceContent, 'source');
         $sourceEntries = $sourceContent[$collection];
-        $proposalSchema = $this->buildProposalSchema($definition, $sourceContent);
+        $proposalSchema = $this->buildProposalSchema($definition, $sourceContent, $requestedEntryCount);
         $entryProperties = array_keys($proposalSchema['properties']['entries']['items']['properties']);
         $availableEntries = $proposalSchema['properties']['entries']['maxItems'];
         $proposalRules = [
             'continuation' => ['required', 'array:entries'],
-            'continuation.entries' => ['required', 'array', 'list', 'min:1', 'max:'.$availableEntries],
+            'continuation.entries' => array_values(array_filter([
+                'required',
+                'array',
+                'list',
+                $requestedEntryCount === null ? null : 'size:'.$requestedEntryCount,
+                'min:1',
+                'max:'.$availableEntries,
+            ])),
             'continuation.entries.*' => ['required', 'array:'.implode(',', $entryProperties)],
         ];
 
@@ -146,7 +174,26 @@ class ContentContinuationComposer
         $combinedContent = $sourceContent;
         $combinedContent[$collection] = [...$sourceEntries, ...$numberedEntries];
 
-        return $this->validateDocument($definition, $combinedContent, 'combined');
+        $normalizationDiagnostics = [
+            'quotes_preserved' => 0,
+            'quotes_normalized' => 0,
+            'quotes_dropped' => 0,
+        ];
+
+        if ($normalizeQuotes && $definition instanceof GeneratedContinuationNormalizer) {
+            $normalization = $definition->normalizeGeneratedContinuation($combinedContent, count($sourceEntries));
+            $combinedContent = $normalization['content'];
+            $normalizationDiagnostics = [
+                'quotes_preserved' => $normalization['quotes_preserved'],
+                'quotes_normalized' => $normalization['quotes_normalized'],
+                'quotes_dropped' => $normalization['quotes_dropped'],
+            ];
+        }
+
+        return new ComposedContentContinuation(
+            content: $this->validateDocument($definition, $combinedContent, 'combined'),
+            quoteNormalization: $normalizationDiagnostics,
+        );
     }
 
     private function continuationType(ContentTypeDefinition $definition): ContinuableContentType

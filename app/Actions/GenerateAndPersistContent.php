@@ -211,6 +211,12 @@ class GenerateAndPersistContent
             return [];
         }
 
+        if (count($references) > 5) {
+            throw ValidationException::withMessages([
+                'references' => 'Choose no more than five content versions as references.',
+            ]);
+        }
+
         $selections = [];
 
         foreach ($references as $reference) {
@@ -234,6 +240,17 @@ class GenerateAndPersistContent
                 'content_uuid' => Str::lower($matches[1]),
                 'version_number' => $versionNumber,
             ];
+        }
+
+        $selectionKeys = array_map(
+            static fn (array $selection): string => $selection['content_uuid'].':'.$selection['version_number'],
+            $selections,
+        );
+
+        if (count($selectionKeys) !== count(array_unique($selectionKeys))) {
+            throw ValidationException::withMessages([
+                'references' => 'Choose each content version only once.',
+            ]);
         }
 
         $contents = $project->generatedContents()
