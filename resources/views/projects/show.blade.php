@@ -16,9 +16,11 @@
             </div>
             <div class="flex flex-wrap gap-3">
                 <a href="{{ route('projects.generated-content.create', $project) }}" class="inline-flex justify-center rounded-lg bg-indigo-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-800 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Generate content</a>
+                <a href="{{ route('projects.export', $project) }}" class="inline-flex justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Export project</a>
                 <a href="{{ route('projects.edit', $project) }}" class="inline-flex justify-center rounded-lg border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Edit project</a>
             </div>
         </div>
+        <p class="mt-4 max-w-3xl text-sm leading-6 text-slate-600">Download this project's context, generated artifacts, and complete immutable version history as JSON. Account information and OpenAI credentials are excluded.</p>
     </section>
 
     <section aria-labelledby="project-context-heading" class="mt-10 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-8">

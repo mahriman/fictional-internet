@@ -9,6 +9,7 @@ use App\Http\Controllers\GeneratedContentExportController;
 use App\Http\Controllers\GeneratedContentManagementController;
 use App\Http\Controllers\ProjectContextController;
 use App\Http\Controllers\ProjectController;
+use App\Http\Controllers\ProjectExportController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', function () {
@@ -32,6 +33,8 @@ Route::middleware('auth')->group(function () {
     Route::delete('/account/settings/openai-credential', [AccountSettingsController::class, 'destroy'])
         ->name('account.settings.openai-credential.destroy');
     Route::resource('projects', ProjectController::class);
+    Route::get('/projects/{project}/export', ProjectExportController::class)
+        ->name('projects.export');
     Route::get('/projects/{project}/context/edit', [ProjectContextController::class, 'edit'])
         ->name('projects.context.edit');
     Route::put('/projects/{project}/context', [ProjectContextController::class, 'update'])
