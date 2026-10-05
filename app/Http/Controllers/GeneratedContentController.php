@@ -5,7 +5,9 @@ namespace App\Http\Controllers;
 use App\Actions\EditGeneratedContentVersion;
 use App\Actions\GenerateAndPersistContent;
 use App\Actions\GenerationAttemptManager;
+use App\ContentTypes\ContentContinuationComposer;
 use App\ContentTypes\ContentTypeRegistry;
+use App\ContentTypes\Contracts\ContinuableContentType;
 use App\Enums\GenerationAttemptStatus;
 use App\Exceptions\GenerationAttemptException;
 use App\Exceptions\OpenAiCredentialException;
@@ -30,6 +32,7 @@ use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
+use InvalidArgumentException;
 use Throwable;
 
 class GeneratedContentController extends Controller
@@ -259,6 +262,7 @@ class GeneratedContentController extends Controller
         Project $project,
         GeneratedContent $generatedContent,
         ContentTypeRegistry $contentTypes,
+        ContentContinuationComposer $composer,
     ): View {
         Gate::authorize('view', $project);
 
@@ -267,7 +271,7 @@ class GeneratedContentController extends Controller
 
         abort_if($version === null, 404);
 
-        return $this->showVersionContent($project, $generatedContent, $version, $versions, $contentTypes);
+        return $this->showVersionContent($project, $generatedContent, $version, $versions, $contentTypes, $composer);
     }
 
     public function showVersion(
@@ -275,6 +279,7 @@ class GeneratedContentController extends Controller
         GeneratedContent $generatedContent,
         int $versionNumber,
         ContentTypeRegistry $contentTypes,
+        ContentContinuationComposer $composer,
     ): View {
         Gate::authorize('view', $project);
 
@@ -289,6 +294,7 @@ class GeneratedContentController extends Controller
             $version,
             $this->versionHistory($generatedContent),
             $contentTypes,
+            $composer,
         );
     }
 
@@ -360,12 +366,23 @@ class GeneratedContentController extends Controller
         GeneratedContentVersion $version,
         Collection $versions,
         ContentTypeRegistry $contentTypes,
+        ContentContinuationComposer $composer,
     ): View {
         $contentType = $contentTypes->all()[$generatedContent->content_type] ?? null;
         $structuredContent = is_array($version->content) ? $version->content : [];
         $presentationView = $contentType?->presentationView();
         $editingView = $contentType?->editingView();
         $latestVersion = $versions->first();
+        $continuationSupported = $contentType instanceof ContinuableContentType;
+        $continuationCapacity = null;
+
+        if ($continuationSupported) {
+            try {
+                $continuationCapacity = $composer->remainingCapacity($contentType, $structuredContent);
+            } catch (ValidationException|InvalidArgumentException) {
+                // Invalid legacy versions remain readable but cannot be continued.
+            }
+        }
 
         return view('generated-content.show', [
             'project' => $project,
@@ -383,6 +400,8 @@ class GeneratedContentController extends Controller
             'versionHistory' => $versions,
             'isLatestVersion' => $latestVersion !== null && $latestVersion->is($version),
             'referenceSummaries' => $this->referenceSummaries($project, $version, $contentTypes),
+            'continuationSupported' => $continuationSupported,
+            'continuationCapacity' => $continuationCapacity,
         ]);
     }
 

@@ -40,6 +40,29 @@ class GenerationAttemptManager
         return $query->exists();
     }
 
+    public function completedContinuationVersionFor(
+        User $user,
+        Project $project,
+        string $token,
+        GeneratedContent $targetContent,
+        GeneratedContentVersion $sourceVersion,
+    ): ?GeneratedContentVersion {
+        $this->validateContinuationBinding($project, $targetContent, $sourceVersion);
+
+        return GenerationAttempt::query()
+            ->where('token_hash', hash('sha256', $token))
+            ->where('user_id', $user->getKey())
+            ->where('project_id', $project->getKey())
+            ->where('target_generated_content_id', $targetContent->getKey())
+            ->where('source_version_id', $sourceVersion->getKey())
+            ->where('status', GenerationAttemptStatus::Completed->value)
+            ->whereHas('generatedContentVersion', static fn (Builder $query) => $query
+                ->where('generated_content_id', $targetContent->getKey())
+                ->where('based_on_version_id', $sourceVersion->getKey()))
+            ->first()
+            ?->generatedContentVersion;
+    }
+
     public function tokenForForm(
         User $user,
         Project $project,

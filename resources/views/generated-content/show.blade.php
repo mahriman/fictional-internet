@@ -23,6 +23,9 @@
                     <div class="flex flex-wrap gap-2">
                         <a href="{{ route('projects.generated-content.versions.export', [$project, $generatedContent, $version->version_number, 'pdf']) }}" class="inline-flex justify-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Download PDF</a>
                         <a href="{{ route('projects.generated-content.versions.export', [$project, $generatedContent, $version->version_number, 'png']) }}" class="inline-flex justify-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Download PNG</a>
+                        @if ($continuationSupported && $continuationCapacity > 0)
+                            <a href="{{ route('projects.generated-content.versions.continuations.create', [$project, $generatedContent, $version->version_number]) }}" class="inline-flex justify-center rounded-lg border border-indigo-300 px-3 py-2 text-sm font-semibold text-indigo-800 hover:bg-indigo-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Continue from version {{ $version->version_number }}</a>
+                        @endif
                         @if ($editingView !== null)
                             <a href="{{ route('projects.generated-content.versions.edit', [$project, $generatedContent, $version->version_number]) }}" class="inline-flex justify-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-700">Edit this version</a>
                         @else
@@ -30,6 +33,11 @@
                         @endif
                     </div>
                 </div>
+                    @if ($continuationSupported && $continuationCapacity === 0)
+                        <p class="mt-4 rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">This discussion has reached its maximum supported size and cannot be continued from this version.</p>
+                    @elseif ($continuationSupported && $continuationCapacity === null)
+                        <p class="mt-4 rounded-lg bg-slate-50 px-4 py-3 text-sm text-slate-600">Continuation is unavailable for this stored version.</p>
+                    @endif
             </header>
 
             @if ($presentationView !== null)

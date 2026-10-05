@@ -3,6 +3,7 @@
 use App\Http\Controllers\AccountSettingsController;
 use App\Http\Controllers\Auth\AuthenticatedSessionController;
 use App\Http\Controllers\Auth\RegisteredUserController;
+use App\Http\Controllers\GeneratedContentContinuationController;
 use App\Http\Controllers\GeneratedContentController;
 use App\Http\Controllers\GeneratedContentExportController;
 use App\Http\Controllers\ProjectContextController;
@@ -62,4 +63,12 @@ Route::middleware('auth')->group(function () {
         ->where('versionNumber', '[1-9][0-9]*')
         ->scopeBindings()
         ->name('projects.generated-content.versions.edits.store');
+    Route::get('/projects/{project}/generated-content/{generatedContent}/versions/{versionNumber}/continuation', [GeneratedContentContinuationController::class, 'create'])
+        ->where('versionNumber', '[1-9][0-9]*')
+        ->scopeBindings()
+        ->name('projects.generated-content.versions.continuations.create');
+    Route::post('/projects/{project}/generated-content/{generatedContent}/versions/{versionNumber}/continuation', [GeneratedContentContinuationController::class, 'store'])
+        ->where('versionNumber', '[1-9][0-9]*')
+        ->scopeBindings()
+        ->name('projects.generated-content.versions.continuations.store');
 });

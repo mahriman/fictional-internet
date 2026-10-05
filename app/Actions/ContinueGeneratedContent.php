@@ -50,12 +50,34 @@ class ContinueGeneratedContent
         ?string $apiKey,
         array $references = [],
     ): ContentContinuationGenerationResult {
+        $prepared = $this->prepare(
+            $user,
+            $generatedContent,
+            $sourceVersion,
+            $instructions,
+            $requestedEntryCount,
+            $references,
+        );
+
+        return $this->handlePrepared($user, $prepared, $attemptToken, $apiKey);
+    }
+
+    /**
+     * Validate source, capacity, continuation instructions, project context, and references once,
+     * before credential resolution or attempt claiming.
+     *
+     * @param  list<string>  $references
+     */
+    public function prepare(
+        User $user,
+        GeneratedContent $generatedContent,
+        GeneratedContentVersion $sourceVersion,
+        string $instructions,
+        int $requestedEntryCount,
+        array $references = [],
+    ): PreparedGeneratedContentContinuation {
         if (DB::transactionLevel() > 0) {
             throw new LogicException('Content continuation must run outside a caller-owned database transaction.');
-        }
-
-        if (! is_string($apiKey) || trim($apiKey) === '') {
-            throw new OpenAiCredentialException('A personal OpenAI API key is required. Add one in Account settings.');
         }
 
         if (trim($instructions) === '' || mb_strlen($instructions, 'UTF-8') > self::MAX_INSTRUCTIONS_LENGTH) {
@@ -102,6 +124,47 @@ class ContinueGeneratedContent
             $serializedInput,
             $references,
         );
+
+        return new PreparedGeneratedContentContinuation(
+            source: $source,
+            generation: $prepared,
+            proposalSchema: $proposalSchema,
+            instructions: $instructions,
+            requestedEntryCount: $requestedEntryCount,
+        );
+    }
+
+    /**
+     * Claim one prepared continuation attempt and perform its single provider request and persistence.
+     *
+     * The supplied API key must already have been resolved for the authenticated user.
+     */
+    public function handlePrepared(
+        User $user,
+        PreparedGeneratedContentContinuation $continuation,
+        string $attemptToken,
+        ?string $apiKey,
+    ): ContentContinuationGenerationResult {
+        if (DB::transactionLevel() > 0) {
+            throw new LogicException('Content continuation must run outside a caller-owned database transaction.');
+        }
+
+        $source = $continuation->source;
+        $prepared = $continuation->generation;
+        $proposalSchema = $continuation->proposalSchema;
+        $instructions = $continuation->instructions;
+        $requestedEntryCount = $continuation->requestedEntryCount;
+        $project = $source->generatedContent->project()->firstOrFail();
+
+        if ($this->attempts->isIssuedFor(
+            $user,
+            $project,
+            $attemptToken,
+            $source->generatedContent,
+            $source->sourceVersion,
+        ) && (! is_string($apiKey) || trim($apiKey) === '')) {
+            throw new OpenAiCredentialException('A personal OpenAI API key is required. Add one in Account settings.');
+        }
 
         $attemptClaim = $this->attempts->claim(
             $user,

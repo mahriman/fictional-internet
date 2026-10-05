@@ -25,6 +25,26 @@ class ContentContinuationComposer
     }
 
     /**
+     * Return remaining entry capacity after validating the selected immutable source document.
+     *
+     * @param  array<string, mixed>  $sourceContent
+     */
+    public function remainingCapacity(ContentTypeDefinition $definition, array $sourceContent): int
+    {
+        $sourceContent = $this->validateDocument($definition, $sourceContent, 'source');
+        $continuation = $this->continuationType($definition);
+        $collection = $continuation->continuationCollectionField();
+        $collectionSchema = $definition->outputSchema()['properties'][$collection] ?? null;
+        $maximumEntries = is_array($collectionSchema) ? ($collectionSchema['maxItems'] ?? null) : null;
+
+        if (! is_int($maximumEntries) || ! is_array($sourceContent[$collection] ?? null)) {
+            throw new InvalidArgumentException('The content type does not define a valid continuation limit.');
+        }
+
+        return $maximumEntries - count($sourceContent[$collection]);
+    }
+
+    /**
      * @param  array<string, mixed>  $sourceContent
      * @return array<string, mixed>
      */
