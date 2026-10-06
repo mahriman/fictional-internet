@@ -50,5 +50,15 @@
 
             @yield('content')
         </main>
+
+        <footer class="border-t border-slate-200 bg-white">
+            <div class="mx-auto flex max-w-6xl flex-wrap items-center gap-x-3 gap-y-1 px-4 py-4 text-sm text-slate-600 sm:px-6 lg:px-8">
+                <span>Fictional Internet</span>
+                <span aria-hidden="true">·</span>
+                <a href="{{ route('license') }}" class="font-medium underline underline-offset-2 hover:text-indigo-700">AGPLv3 license</a>
+                <span aria-hidden="true">·</span>
+                <a href="{{ route('license') }}#source" class="font-medium underline underline-offset-2 hover:text-indigo-700">Source</a>
+            </div>
+        </footer>
     </body>
 </html>

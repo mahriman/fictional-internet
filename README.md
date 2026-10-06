@@ -73,6 +73,7 @@ they intentionally exclude credentials and account/authentication data. See
 
 ## License
 
-`composer.json` currently declares the package license as MIT, but this
-repository does not contain a `LICENSE` file. Confirm and publish the intended
-license text before distributing the application.
+Fictional Internet is licensed under the GNU Affero General Public License
+version 3.0 only ([AGPL-3.0-only](LICENSE)). AGPL is a strong copyleft license
+that includes conditions for modified versions used over a network. See the
+license text for the complete terms.

@@ -14,6 +14,15 @@ use App\Http\Controllers\ProjectController;
 use App\Http\Controllers\ProjectExportController;
 use Illuminate\Support\Facades\Route;
 
+Route::view('/license', 'legal.license')->name('license');
+Route::get('/license/text', function () {
+    return response(file_get_contents(base_path('LICENSE')), headers: [
+        'Content-Type' => 'text/plain; charset=UTF-8',
+        'Content-Disposition' => 'inline; filename="LICENSE"',
+        'X-Content-Type-Options' => 'nosniff',
+    ]);
+})->name('license.text');
+
 Route::get('/', function () {
     return auth()->check()
         ? redirect()->route('projects.index')

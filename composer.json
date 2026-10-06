@@ -1,13 +1,14 @@
 {
     "$schema": "https://getcomposer.org/schema.json",
-    "name": "laravel/laravel",
+    "name": "fictional-internet/fictional-internet",
     "type": "project",
-    "description": "The skeleton application for the Laravel framework.",
+    "description": "A Laravel application for generating, managing, and exporting fictional online content.",
     "keywords": [
-        "laravel",
-        "framework"
+        "fictional-content",
+        "storytelling",
+        "laravel"
     ],
-    "license": "MIT",
+    "license": "AGPL-3.0-only",
     "require": {
         "php": "^8.3",
         "laravel/framework": "^13.17",
