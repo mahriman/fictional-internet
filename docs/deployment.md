@@ -2,8 +2,10 @@
 
 This guide describes a single-server nginx/PHP-FPM deployment with MySQL.
 Use the [installation guide](installation.md) to provision dependencies,
-secrets, and the database. TLS termination and certificates are operator-
-specific; serve the application over HTTPS in production.
+secrets, and the database. For disaster recovery and release upgrades, see
+[Backup, restore, and upgrade](backup-restore-upgrade.md). TLS termination and
+certificates are operator-specific; serve the application over HTTPS in
+production.
 
 ## Production environment
 

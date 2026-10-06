@@ -60,7 +60,8 @@ The guarded MySQL test profile and renderer smoke instructions are in the
 PHP-FPM, mail, renderer binaries, and verification are covered by
 [Installation](docs/installation.md) and [Deployment](docs/deployment.md).
 Generation rate limits and attempt cleanup are described in
-[Operational safety](docs/operational-safety.md).
+[Operational safety](docs/operational-safety.md), and recovery/upgrade
+procedures are in [Backup, restore, and upgrade](docs/backup-restore-upgrade.md).
 
 ## Security and project data
 
