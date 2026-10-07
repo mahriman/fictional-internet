@@ -12,7 +12,7 @@ documents or complete project archives.
 - Immutable, numbered versions with source lineage and captured generation
   context.
 - Optional references to exact historical versions in the same project.
-- Per-document HTML, PDF, and full-document PNG export.
+- Per-document PDF, and full-document PNG export.
 - Project-level JSON export format version 1 for portability. Import/restore
   is not currently provided.
 - Per-user OpenAI credentials (BYOK). Credentials are encrypted with Laravel's
@@ -66,7 +66,7 @@ procedures are in [Backup, restore, and upgrade](docs/backup-restore-upgrade.md)
 ## Security and project data
 
 Each user must configure a personal OpenAI API key before generating content.
-Do not put API keys or `APP_KEY` in source control. Project JSON archives
+Do not put API keys or `APP_KEY` in source control or .env file. Project JSON archives
 contain project-owned context, artifacts, versions, and captured provenance;
 they intentionally exclude credentials and account/authentication data. See
 [Project export format v1](docs/project-export-format-v1.md).
@@ -77,3 +77,6 @@ Fictional Internet is licensed under the GNU Affero General Public License
 version 3.0 only ([AGPL-3.0-only](LICENSE)). AGPL is a strong copyleft license
 that includes conditions for modified versions used over a network. See the
 license text for the complete terms.
+
+Copyright © 2026 github.com/mahriman. The canonical source repository is
+[github.com/mahriman/fictional-internet](https://github.com/mahriman/fictional-internet).

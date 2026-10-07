@@ -8,13 +8,16 @@ test('public pages link to the license and source information', function () {
         ->assertSee('Source');
 });
 
-test('license information identifies the exact license and the restricted source repository', function () {
+test('license information identifies the exact license, copyright holder, and source availability timing', function () {
     $this->get(route('license'))
         ->assertOk()
         ->assertSee('GNU Affero General Public License version 3.0 only')
         ->assertSee('AGPL-3.0-only')
+        ->assertSee('Copyright © 2026 github.com/mahriman.')
         ->assertSee(route('license.text'))
-        ->assertSee('source repository is private')
+        ->assertSee('private during release-candidate testing')
+        ->assertSee('planned to become public for the 1.0 release')
+        ->assertSee('Before deploying the network-accessible 1.0 release')
         ->assertSee('https://github.com/mahriman/fictional-internet');
 });
 

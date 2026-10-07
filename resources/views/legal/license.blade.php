@@ -10,6 +10,7 @@
                 Fictional Internet is licensed under the GNU Affero General Public License version 3.0 only
                 (<span class="font-medium">AGPL-3.0-only</span>).
             </p>
+            <p class="mt-2 text-sm text-slate-600">Copyright © 2026 github.com/mahriman.</p>
         </div>
 
         <p class="text-slate-700">
@@ -23,10 +24,10 @@
         <div id="source" class="space-y-2 rounded-lg border border-slate-200 bg-white p-4">
             <h2 class="font-semibold text-slate-950">Corresponding source</h2>
             <p class="text-sm text-slate-700">
-                The canonical source repository is private, so access may be restricted. The operator of this installation is responsible for making the corresponding source for the running version available as required by the license.
+                The canonical source repository is private during release-candidate testing and is planned to become public for the 1.0 release. Before deploying the network-accessible 1.0 release, the operator must ensure that the Corresponding Source for the running version is accessible as required by the license.
             </p>
             <p>
-                <a href="https://github.com/mahriman/fictional-internet" class="font-medium text-indigo-700 underline underline-offset-2 hover:text-indigo-900">Canonical source repository (access may be restricted)</a>
+                <a href="https://github.com/mahriman/fictional-internet" class="font-medium text-indigo-700 underline underline-offset-2 hover:text-indigo-900">Canonical source repository</a>
             </p>
         </div>
     </section>

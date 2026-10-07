@@ -3,6 +3,10 @@
     "name": "fictional-internet/fictional-internet",
     "type": "project",
     "description": "A Laravel application for generating, managing, and exporting fictional online content.",
+    "homepage": "https://github.com/mahriman/fictional-internet",
+    "support": {
+        "source": "https://github.com/mahriman/fictional-internet"
+    },
     "keywords": [
         "fictional-content",
         "storytelling",

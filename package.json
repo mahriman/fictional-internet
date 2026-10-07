@@ -1,5 +1,6 @@
 {
     "$schema": "https://www.schemastore.org/package.json",
+    "name": "fictional-internet",
     "private": true,
     "license": "AGPL-3.0-only",
     "type": "module",

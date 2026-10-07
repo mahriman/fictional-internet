@@ -1,5 +1,15 @@
 # Production deployment
 
+## 1.0 license and source availability
+
+Fictional Internet 1.0 will be released under **AGPL-3.0-only**. Copyright
+© 2026 github.com/mahriman. The canonical source repository is
+[github.com/mahriman/fictional-internet](https://github.com/mahriman/fictional-internet).
+It is private during release-candidate testing and is planned to become public
+at the 1.0 release. Before deploying the network-accessible 1.0 release, make
+the Corresponding Source for the running version accessible to users as
+required by the license.
+
 This guide describes a single-server nginx/PHP-FPM deployment with MySQL.
 Use the [installation guide](installation.md) to provision dependencies,
 secrets, and the database. For disaster recovery and release upgrades, see
