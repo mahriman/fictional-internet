@@ -66,8 +66,10 @@ procedures are in [Backup, restore, and upgrade](docs/backup-restore-upgrade.md)
 ## Security and project data
 
 Each user must configure a personal OpenAI API key before generating content.
-Do not put API keys or `APP_KEY` in source control, and don't use API_KEY in .env file. 
-Project JSON archives contain project-owned context, artifacts, versions, 
+Do not commit API keys, `APP_KEY`, or the `.env` file to source control. OpenAI
+API keys are configured per user and must not be stored as a global application
+credential in `.env`.
+Project JSON archives contain project-owned context, artifacts, versions,
 and captured provenance; they intentionally exclude credentials and
 account/authentication data. See [Project export format v1](docs/project-export-format-v1.md).
 
