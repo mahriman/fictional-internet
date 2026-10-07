@@ -46,10 +46,8 @@ class GeneratedContentContinuationController extends Controller
         $collection = $definition->continuationCollectionField();
         $sourceEntries = $sourceContent[$collection] ?? null;
         $entryCount = is_array($sourceEntries) && array_is_list($sourceEntries) ? count($sourceEntries) : 0;
-        $collectionSchema = $definition->outputSchema()['properties'][$collection] ?? [];
-        $maximumEntryCount = is_array($collectionSchema) && is_int($collectionSchema['maxItems'] ?? null)
-            ? $collectionSchema['maxItems']
-            : 0;
+        $maximumEntryCount = $definition->maximumContinuationEntries();
+        $maximumNewEntryCount = $definition->maximumContinuationEntriesPerRequest();
         $remainingCapacity = null;
 
         try {
@@ -80,6 +78,7 @@ class GeneratedContentContinuationController extends Controller
             'contentTypeLabel' => $definition->label(),
             'entryCount' => $entryCount,
             'maximumEntryCount' => $maximumEntryCount,
+            'maximumNewEntryCount' => $maximumNewEntryCount,
             'remainingCapacity' => $remainingCapacity,
             'hasNewerVersions' => $latestVersionNumber !== null && $latestVersionNumber > $versionNumber,
             'contentTypes' => $contentTypes->all(),

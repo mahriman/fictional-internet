@@ -66,13 +66,14 @@
                         @php($oldEntryCount = old('entry_count'))
                         @php($selectedEntryCount = is_scalar($oldEntryCount) ? filter_var($oldEntryCount, FILTER_VALIDATE_INT) : false)
                         @php($defaultEntryCount = min(3, $remainingCapacity))
+                        @php($maximumRequestEntryCount = min($remainingCapacity, $maximumNewEntryCount))
                         <label for="entry_count" class="block text-sm font-medium text-slate-700">Number of new entries <span class="text-rose-700">*</span></label>
                         <select id="entry_count" name="entry_count" required aria-invalid="{{ $errors->has('entry_count') ? 'true' : 'false' }}" class="mt-2 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-slate-950 shadow-sm focus:border-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-200">
-                            @for ($count = 1; $count <= $remainingCapacity; $count++)
+                            @for ($count = 1; $count <= $maximumRequestEntryCount; $count++)
                                 <option value="{{ $count }}" @selected(($selectedEntryCount !== false && $selectedEntryCount === $count) || ($oldEntryCount === null && $count === $defaultEntryCount))>{{ $count }} {{ $count === 1 ? 'entry' : 'entries' }}</option>
                             @endfor
                         </select>
-                        <p class="mt-2 text-xs text-slate-500">Choose between 1 and {{ $remainingCapacity }} new {{ $remainingCapacity === 1 ? 'entry' : 'entries' }}.</p>
+                        <p class="mt-2 text-xs text-slate-500">Choose between 1 and {{ $maximumRequestEntryCount }} new {{ $maximumRequestEntryCount === 1 ? 'entry' : 'entries' }} in this request. Each request has a per-generation limit; the discussion can grow to {{ $maximumEntryCount }} total entries through continuations.</p>
                         @error('entry_count')
                             <p class="mt-2 text-sm font-medium text-rose-700">{{ $message }}</p>
                         @enderror

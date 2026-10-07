@@ -200,7 +200,7 @@ test('long forum and schrecknet documents retain every ordered post and message'
     $forum = GeneratedContent::factory()->for($project)->create(['content_type' => 'forum_thread']);
     $posts = [];
 
-    for ($number = 1; $number <= 20; $number++) {
+    for ($number = 1; $number <= 25; $number++) {
         $posts[] = [
             'post_number' => $number,
             'author' => "Forum author {$number}",
@@ -219,7 +219,7 @@ test('long forum and schrecknet documents retain every ordered post and message'
     $schrecknet = GeneratedContent::factory()->for($project)->create(['content_type' => 'schrecknet_thread']);
     $messages = [];
 
-    for ($number = 1; $number <= 30; $number++) {
+    for ($number = 1; $number <= 35; $number++) {
         $messages[] = [
             'message_number' => $number,
             'handle' => "handle-{$number}",
@@ -236,9 +236,9 @@ test('long forum and schrecknet documents retain every ordered post and message'
     ]]);
 
     $forumHtml = $this->actingAs($project->user)->get(contentExportUrl($project, $forum, 'html'))->assertOk()->streamedContent();
-    expect($forumHtml)->toContain('Forum author 20', 'Forum body 20 with a newline.', 'Next line.');
+    expect($forumHtml)->toContain('Forum author 25', 'Forum body 25 with a newline.', 'Next line.');
     $schreckHtml = $this->actingAs($project->user)->get(contentExportUrl($project, $schrecknet, 'html'))->assertOk()->streamedContent();
-    expect($schreckHtml)->toContain('handle-30', 'SchreckNet message 30 — café.', 'Second line.');
+    expect($schreckHtml)->toContain('handle-35', 'SchreckNet message 35 — café.', 'Second line.');
 
     Http::assertNothingSent();
 });

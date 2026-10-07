@@ -2,12 +2,18 @@
 
 use App\Enums\ContentExportFormat;
 use App\Exceptions\ContentExportException;
+use App\Models\GeneratedContent;
+use App\Models\GeneratedContentVersion;
+use App\Models\Project;
 use App\Services\Export\ContentDocumentRenderer;
 use App\Services\Export\FirefoxWebDriverBiDiRenderer;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Symfony\Component\Process\Process;
+
+uses(RefreshDatabase::class);
 
 test('the renderer uses standalone system executables and does not search snap locations', function () {
     $renderer = new FirefoxWebDriverBiDiRenderer;
@@ -225,6 +231,51 @@ test('the installed Firefox renderer exports a 55-message document completely to
         expect($metadata->getOutput())->toMatch('/Pages:\s+(?:[2-9]|[1-9][0-9]+)/');
     }
 });
+
+test('the real renderer exports persisted Forum and SchreckNet versions longer than twenty entries to PDF', function (string $type, string $collection, string $numberField, string $authorField, string $replyField, int $entryCount) {
+    if (! is_executable('/usr/bin/node') || ! is_executable('/usr/local/bin/geckodriver') || ! is_executable('/usr/local/bin/firefox')) {
+        test()->markTestSkipped('Standalone Node.js, Firefox and geckodriver are required for the local renderer smoke test.');
+    }
+
+    $project = Project::factory()->create();
+    $content = GeneratedContent::factory()->for($project)->create(['content_type' => $type]);
+    $entries = [];
+
+    for ($number = 1; $number <= $entryCount; $number++) {
+        $entries[] = [
+            $numberField => $number,
+            $authorField => 'Writer '.$number,
+            'posted_at' => sprintf('2026-10-05T10:%02d:00+00:00', $number),
+            'body' => 'Synthetic discussion entry '.$number.' with readable Unicode café — 朋友.',
+            $replyField => $number === 1 ? null : 1,
+            'quote' => null,
+        ];
+    }
+
+    $document = $type === 'forum_thread'
+        ? ['forum_name' => 'Harbor Board', 'category' => 'Local', 'thread_title' => 'Long Forum Thread', 'started_at' => '2026-10-05T10:01:00+00:00']
+        : ['network' => 'SchreckNet', 'channel' => 'harbor/quiet', 'thread_title' => 'Long SchreckNet Thread', 'started_at' => '2026-10-05T10:01:00+00:00'];
+    $document[$collection] = $entries;
+    $version = GeneratedContentVersion::factory()->for($content)->create(['version_number' => 1, 'content' => $document]);
+    $temporaryDirectoriesBeforeRender = glob(sys_get_temp_dir().'/fictional-internet-export-*') ?: [];
+
+    $response = $this->actingAs($project->user)
+        ->get(route('projects.generated-content.versions.export', [
+            'project' => $project,
+            'generatedContent' => $content,
+            'versionNumber' => $version->version_number,
+            'format' => 'pdf',
+        ]))
+        ->assertOk();
+    $pdf = $response->streamedContent();
+
+    expect($pdf)->toStartWith('%PDF-')
+        ->and(strlen($pdf))->toBeGreaterThan(1000)
+        ->and(glob(sys_get_temp_dir().'/fictional-internet-export-*') ?: [])->toBe($temporaryDirectoriesBeforeRender);
+})->with([
+    'Forum Thread' => ['forum_thread', 'posts', 'post_number', 'author', 'reply_to_post_number', 25],
+    'SchreckNet Thread' => ['schrecknet_thread', 'messages', 'message_number', 'handle', 'reply_to_message_number', 35],
+]);
 
 test('the Firefox renderer clearly rejects a PNG larger than its safe full-document limit', function () {
     if (! is_executable('/usr/bin/node') || ! is_executable('/usr/local/bin/geckodriver') || ! is_executable('/usr/local/bin/firefox')) {

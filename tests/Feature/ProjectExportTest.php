@@ -163,6 +163,42 @@ test('project export preserves branches and deterministic artifact and version o
     Http::assertNothingSent();
 });
 
+test('project json export preserves Forum and SchreckNet discussions longer than twenty entries', function (string $type, string $collection, string $numberField, int $entryCount) {
+    $project = Project::factory()->create();
+    $content = GeneratedContent::factory()->for($project)->create(['content_type' => $type]);
+    $entries = [];
+
+    for ($number = 1; $number <= $entryCount; $number++) {
+        $entries[] = [
+            $numberField => $number,
+            $type === 'forum_thread' ? 'author' : 'handle' => 'Writer '.$number,
+            'posted_at' => sprintf('2025-06-15T10:%02d:00+00:00', $number),
+            'body' => 'Long discussion entry '.$number,
+            $type === 'forum_thread' ? 'reply_to_post_number' : 'reply_to_message_number' => $number === 1 ? null : 1,
+            'quote' => null,
+        ];
+    }
+
+    $document = $type === 'forum_thread'
+        ? ['forum_name' => 'Harbor Board', 'thread_title' => 'Long thread', 'category' => 'Local', 'started_at' => '2025-06-15T10:01:00+00:00']
+        : ['network' => 'SchreckNet', 'channel' => 'harbor/quiet', 'thread_title' => 'Long thread', 'started_at' => '2025-06-15T10:01:00+00:00'];
+    $document[$collection] = $entries;
+    $version = GeneratedContentVersion::factory()->for($content)->create(['version_number' => 1, 'content' => $document]);
+
+    $this->actingAs($project->user);
+    $archive = projectExportData($project);
+
+    expect(canonicalizeJsonStructure($archive['generated_contents'][0]['versions'][0]['content'][$collection]))
+        ->toBe(canonicalizeJsonStructure($version->content[$collection]))
+        ->and($archive['generated_contents'][0]['versions'][0]['content'][$collection])->toHaveCount($entryCount)
+        ->and($archive['generated_contents'][0]['versions'][0]['content'][$collection][$entryCount - 1][$numberField])->toBe($entryCount);
+
+    Http::assertNothingSent();
+})->with([
+    'Forum Thread' => ['forum_thread', 'posts', 'post_number', 25],
+    'SchreckNet Thread' => ['schrecknet_thread', 'messages', 'message_number', 35],
+]);
+
 test('project export preserves captured reference snapshots after the referenced artifact is deleted', function () {
     $project = Project::factory()->create();
     $referenced = GeneratedContent::factory()->for($project)->create(['title' => 'Captured title']);

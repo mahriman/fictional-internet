@@ -59,6 +59,30 @@ function continuationUiSource(string $type, string $body = 'The eastern relay we
 }
 
 /** @return array<string, mixed> */
+function continuationUiSourceWithEntries(string $type, int $entryCount): array
+{
+    $source = continuationUiSource($type);
+    $collection = $type === 'forum_thread' ? 'posts' : 'messages';
+    $numberField = $type === 'forum_thread' ? 'post_number' : 'message_number';
+    $replyField = $type === 'forum_thread' ? 'reply_to_post_number' : 'reply_to_message_number';
+    $authorField = $type === 'forum_thread' ? 'author' : 'handle';
+    $source[$collection] = [];
+
+    for ($number = 1; $number <= $entryCount; $number++) {
+        $source[$collection][] = [
+            $numberField => $number,
+            $authorField => 'Writer '.$number,
+            'posted_at' => '2026-10-05T10:00:00+00:00',
+            'body' => 'Existing entry '.$number,
+            $replyField => $number === 1 ? null : 1,
+            'quote' => null,
+        ];
+    }
+
+    return $source;
+}
+
+/** @return array<string, mixed> */
 function continuationUiProposal(string $type, string $body = 'A second relay just came back online.'): array
 {
     if ($type === 'forum_thread') {
@@ -139,7 +163,7 @@ test('owners can open Forum Thread and SchreckNet continuation forms with source
         ->assertOk()
         ->assertSee('Continue '.($type === 'forum_thread' ? 'Forum Thread' : 'SchreckNet Thread').' from version 1')
         ->assertSee('Current entries')
-        ->assertSee('1 of '.($type === 'forum_thread' ? '20' : '30'))
+        ->assertSee('1 of 200')
         ->assertSee('Newer versions already exist')
         ->assertSee('branch from this selected version')
         ->assertSee('Continuation source:')
@@ -184,22 +208,11 @@ test('owners can open Forum Thread and SchreckNet continuation forms with source
         ->toBe($newer->id);
 })->with(['forum_thread', 'schrecknet_thread']);
 
-test('selected version detail links to its own continuation and a full discussion has no usable action', function () {
+test('selected version detail links to its own continuation and a full discussion cannot be continued through the ui or post', function (string $type, string $collection) {
     $project = Project::factory()->create();
-    $content = GeneratedContent::factory()->for($project)->create(['content_type' => 'forum_thread']);
-    $source = continuationUiSource('forum_thread');
-    $full = $source;
-    $full['posts'] = [];
-    for ($number = 1; $number <= 20; $number++) {
-        $full['posts'][] = [
-            'post_number' => $number,
-            'author' => 'User '.$number,
-            'posted_at' => '2026-10-05T10:00:00+00:00',
-            'body' => 'Post '.$number,
-            'reply_to_post_number' => $number === 1 ? null : 1,
-            'quote' => null,
-        ];
-    }
+    $content = GeneratedContent::factory()->for($project)->create(['content_type' => $type]);
+    $source = continuationUiSource($type);
+    $full = continuationUiSourceWithEntries($type, 200);
     $first = GeneratedContentVersion::factory()->for($content)->create(['version_number' => 1, 'content' => $source]);
     GeneratedContentVersion::factory()->for($content)->create(['version_number' => 2, 'content' => $full]);
 
@@ -218,9 +231,54 @@ test('selected version detail links to its own continuation and a full discussio
         ->assertSee('cannot be continued from this version')
         ->assertDontSee('name="continuation_instructions"', false);
 
+    $fullSource = $content->versions()->where('version_number', 2)->firstOrFail();
+    $attemptToken = continuationUiAttempt($project, $content, $fullSource);
+    Http::fake();
+
+    $this->from(continuationUiRoute($project, $content, 2, 'create'))
+        ->post(continuationUiRoute($project, $content, 2, 'store'), [
+            'attempt_token' => $attemptToken,
+            'continuation_instructions' => 'Add another response.',
+            'entry_count' => '1',
+        ])
+        ->assertRedirect(continuationUiRoute($project, $content, 2, 'create'))
+        ->assertSessionHasErrors($collection);
+
     expect($first->version_number)->toBe(1);
+    expect(GenerationAttempt::query()->where('token_hash', hash('sha256', $attemptToken))->sole()->status)
+        ->toBe(GenerationAttemptStatus::Issued);
     Http::assertNothingSent();
-});
+})->with([
+    'Forum Thread' => ['forum_thread', 'posts'],
+    'SchreckNet Thread' => ['schrecknet_thread', 'messages'],
+]);
+
+test('a twenty-entry Forum Thread and SchreckNet Thread remain continuable with per-request choices', function (string $type, int $perRequestLimit) {
+    $project = Project::factory()->create();
+    $content = GeneratedContent::factory()->for($project)->create(['content_type' => $type]);
+    $source = GeneratedContentVersion::factory()->for($content)->create([
+        'version_number' => 1,
+        'content' => continuationUiSourceWithEntries($type, 20),
+    ]);
+
+    $response = $this->actingAs($project->user)
+        ->get(continuationUiRoute($project, $content, 1, 'create'))
+        ->assertOk()
+        ->assertSee('20 of 200')
+        ->assertSee('Continue '.($type === 'forum_thread' ? 'Forum Thread' : 'SchreckNet Thread').' from version 1')
+        ->assertSee('<option value="'.$perRequestLimit.'"', false)
+        ->assertDontSee('<option value="'.($perRequestLimit + 1).'"', false)
+        ->assertSee('per-generation limit')
+        ->assertSee('can grow to 200 total entries through continuations');
+
+    expect($response->viewData('attemptToken'))->toMatch('/\A[a-f0-9]{64}\z/')
+        ->and($source->content[$type === 'forum_thread' ? 'posts' : 'messages'])->toHaveCount(20);
+
+    Http::assertNothingSent();
+})->with([
+    'Forum Thread' => ['forum_thread', 20],
+    'SchreckNet Thread' => ['schrecknet_thread', 30],
+]);
 
 test('entry count options stop at remaining capacity and the server rejects an impossible requested count', function () {
     $project = Project::factory()->create();
@@ -243,9 +301,10 @@ test('entry count options stop at remaining capacity and the server rejects an i
     $form = $this->actingAs($project->user)->get($formUrl)
         ->assertOk()
         ->assertSee('Remaining capacity')
-        ->assertSee('19 of 20')
+        ->assertSee('19 of 200')
         ->assertSee('<option value="1"', false)
-        ->assertDontSee('<option value="2"', false);
+        ->assertSee('<option value="20"', false)
+        ->assertDontSee('<option value="21"', false);
     $token = $form->viewData('attemptToken');
     Http::fake();
 
@@ -253,7 +312,7 @@ test('entry count options stop at remaining capacity and the server rejects an i
         ->post(continuationUiRoute($project, $content, 1, 'store'), [
             'attempt_token' => $token,
             'continuation_instructions' => 'Add another response.',
-            'entry_count' => '2',
+            'entry_count' => '21',
         ])
         ->assertRedirect($formUrl)
         ->assertSessionHasErrors('entry_count')

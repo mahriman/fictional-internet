@@ -138,3 +138,37 @@ test('registered content with an unavailable presentation uses the safe json fal
 
     Http::assertNothingSent();
 });
+
+test('Forum and SchreckNet version pages render discussions longer than twenty entries', function (string $type, string $collection, string $numberField, string $authorField, string $replyField, int $entryCount) {
+    $project = Project::factory()->create();
+    $generatedContent = GeneratedContent::factory()->for($project)->create(['content_type' => $type]);
+    $entries = [];
+
+    for ($number = 1; $number <= $entryCount; $number++) {
+        $entries[] = [
+            $numberField => $number,
+            $authorField => 'Writer '.$number,
+            'posted_at' => sprintf('2026-10-05T10:%02d:00+00:00', $number),
+            'body' => 'Visible discussion entry '.$number,
+            $replyField => $number === 1 ? null : 1,
+            'quote' => null,
+        ];
+    }
+
+    $document = $type === 'forum_thread'
+        ? ['forum_name' => 'Harbor Board', 'thread_title' => 'Long Forum Thread', 'category' => 'Local', 'started_at' => '2026-10-05T10:01:00+00:00']
+        : ['network' => 'SchreckNet', 'channel' => 'harbor/quiet', 'thread_title' => 'Long SchreckNet Thread', 'started_at' => '2026-10-05T10:01:00+00:00'];
+    $document[$collection] = $entries;
+    GeneratedContentVersion::factory()->for($generatedContent)->create(['content' => $document]);
+
+    $this->actingAs($project->user)
+        ->get(route('projects.generated-content.show', [$project, $generatedContent]))
+        ->assertOk()
+        ->assertSee('Visible discussion entry '.$entryCount)
+        ->assertSee('Writer '.$entryCount);
+
+    Http::assertNothingSent();
+})->with([
+    'Forum Thread' => ['forum_thread', 'posts', 'post_number', 'author', 'reply_to_post_number', 25],
+    'SchreckNet Thread' => ['schrecknet_thread', 'messages', 'message_number', 'handle', 'reply_to_message_number', 35],
+]);

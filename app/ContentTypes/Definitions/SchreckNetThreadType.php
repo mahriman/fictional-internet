@@ -12,6 +12,8 @@ class SchreckNetThreadType implements ContentTypeDefinition, ContinuableContentT
 {
     public const MAX_MESSAGES = 30;
 
+    public const MAX_TOTAL_MESSAGES = 200;
+
     public const TIMESTAMP_FORMAT = DiscussionSemantics::TIMESTAMP_FORMAT;
 
     public function key(): string
@@ -32,6 +34,16 @@ class SchreckNetThreadType implements ContentTypeDefinition, ContinuableContentT
     public function continuationNumberField(): string
     {
         return 'message_number';
+    }
+
+    public function maximumContinuationEntries(): int
+    {
+        return self::MAX_TOTAL_MESSAGES;
+    }
+
+    public function maximumContinuationEntriesPerRequest(): int
+    {
+        return self::MAX_MESSAGES;
     }
 
     public function continuationInstructions(): string
@@ -136,13 +148,13 @@ INSTRUCTIONS;
             'started_at' => ['required', 'date_format:'.self::TIMESTAMP_FORMAT],
             'messages' => ['required', 'array', 'list', 'min:1', 'max:'.self::MAX_MESSAGES],
             'messages.*' => ['required', 'array:message_number,handle,posted_at,body,reply_to_message_number,quote'],
-            'messages.*.message_number' => ['required', 'integer', 'min:1', 'max:'.self::MAX_MESSAGES],
+            'messages.*.message_number' => ['required', 'integer', 'min:1', 'max:'.self::MAX_TOTAL_MESSAGES],
             'messages.*.handle' => ['required', 'string', 'max:80'],
             'messages.*.posted_at' => ['required', 'date_format:'.self::TIMESTAMP_FORMAT],
             'messages.*.body' => ['required', 'string', 'max:5000'],
-            'messages.*.reply_to_message_number' => ['present', 'nullable', 'integer', 'min:1', 'max:'.self::MAX_MESSAGES],
+            'messages.*.reply_to_message_number' => ['present', 'nullable', 'integer', 'min:1', 'max:'.self::MAX_TOTAL_MESSAGES],
             'messages.*.quote' => ['present', 'nullable', 'array:message_number,text'],
-            'messages.*.quote.message_number' => ['nullable', 'integer', 'min:1', 'max:'.self::MAX_MESSAGES],
+            'messages.*.quote.message_number' => ['nullable', 'integer', 'min:1', 'max:'.self::MAX_TOTAL_MESSAGES],
             'messages.*.quote.text' => ['nullable', 'string', 'max:5000'],
         ];
     }
@@ -204,14 +216,14 @@ INSTRUCTIONS;
             'channel' => ['required', 'string', 'max:255'],
             'thread_title' => ['required', 'string', 'max:255'],
             'started_at' => ['required', 'date_format:'.self::TIMESTAMP_FORMAT],
-            'messages' => ['required', 'array', 'list', 'size:'.$messageCount, 'min:1', 'max:'.self::MAX_MESSAGES],
+            'messages' => ['required', 'array', 'list', 'size:'.$messageCount, 'min:1', 'max:'.self::MAX_TOTAL_MESSAGES],
             'messages.*' => ['required', 'array:handle,posted_at,body,reply_to_message_number,quote'],
             'messages.*.handle' => ['required', 'string', 'max:80'],
             'messages.*.posted_at' => ['required', 'date_format:'.self::TIMESTAMP_FORMAT],
             'messages.*.body' => ['required', 'string', 'max:5000'],
-            'messages.*.reply_to_message_number' => ['nullable', 'integer', 'min:1', 'max:'.self::MAX_MESSAGES],
+            'messages.*.reply_to_message_number' => ['nullable', 'integer', 'min:1', 'max:'.self::MAX_TOTAL_MESSAGES],
             'messages.*.quote' => ['nullable', 'array:message_number,text'],
-            'messages.*.quote.message_number' => ['nullable', 'integer', 'min:1', 'max:'.self::MAX_MESSAGES],
+            'messages.*.quote.message_number' => ['nullable', 'integer', 'min:1', 'max:'.self::MAX_TOTAL_MESSAGES],
             'messages.*.quote.text' => ['nullable', 'string', 'max:5000'],
         ];
     }

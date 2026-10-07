@@ -34,14 +34,12 @@ class ContentContinuationComposer
         $sourceContent = $this->validateDocument($definition, $sourceContent, 'source');
         $continuation = $this->continuationType($definition);
         $collection = $continuation->continuationCollectionField();
-        $collectionSchema = $definition->outputSchema()['properties'][$collection] ?? null;
-        $maximumEntries = is_array($collectionSchema) ? ($collectionSchema['maxItems'] ?? null) : null;
 
-        if (! is_int($maximumEntries) || ! is_array($sourceContent[$collection] ?? null)) {
+        if (! is_array($sourceContent[$collection] ?? null)) {
             throw new InvalidArgumentException('The content type does not define a valid continuation limit.');
         }
 
-        return $maximumEntries - count($sourceContent[$collection]);
+        return $continuation->maximumContinuationEntries() - count($sourceContent[$collection]);
     }
 
     /**
@@ -67,27 +65,34 @@ class ContentContinuationComposer
             throw new InvalidArgumentException('The content type does not have a usable continuation structure.');
         }
 
-        $maximumSourceEntries = $collectionSchema['maxItems'] ?? null;
+        $maximumTotalEntries = $continuation->maximumContinuationEntries();
+        $maximumEntriesPerRequest = $continuation->maximumContinuationEntriesPerRequest();
 
-        if (! is_int($maximumSourceEntries) || $maximumSourceEntries < 1) {
+        if ($maximumTotalEntries < 1 || $maximumEntriesPerRequest < 1) {
             throw new InvalidArgumentException('The content type does not define a valid continuation limit.');
         }
 
-        $maximumEntries = $maximumSourceEntries - count($sourceEntries);
+        $remainingTotalEntries = $maximumTotalEntries - count($sourceEntries);
 
-        if ($maximumEntries < 1) {
+        if ($remainingTotalEntries < 1) {
             throw ValidationException::withMessages([
                 $collection => ['This discussion has reached its maximum number of entries and cannot be continued.'],
             ]);
         }
 
+        $maximumEntries = min($remainingTotalEntries, $maximumEntriesPerRequest);
+
         if ($requestedEntryCount !== null && ($requestedEntryCount < 1 || $requestedEntryCount > $maximumEntries)) {
             throw ValidationException::withMessages([
-                'entry_count' => ['The requested number of entries exceeds the remaining capacity for this discussion.'],
+                'entry_count' => ['The requested number of entries exceeds the remaining discussion capacity or the per-request limit.'],
             ]);
         }
 
-        $entrySchema = $collectionSchema['items'];
+        $entrySchema = $this->expandContinuationNumberBounds(
+            $collectionSchema['items'],
+            $maximumEntriesPerRequest,
+            $maximumTotalEntries,
+        );
         unset($entrySchema['properties'][$numberField]);
         $entrySchema['required'] = array_values(array_diff($entrySchema['required'] ?? [], [$numberField]));
 
@@ -104,6 +109,25 @@ class ContentContinuationComposer
             ],
             'required' => ['entries'],
         ];
+    }
+
+    /**
+     * @param  array<string, mixed>  $schema
+     * @return array<string, mixed>
+     */
+    private function expandContinuationNumberBounds(array $schema, int $perRequestLimit, int $totalLimit): array
+    {
+        if (($schema['type'] ?? null) === 'integer' && ($schema['maximum'] ?? null) === $perRequestLimit) {
+            $schema['maximum'] = $totalLimit;
+        }
+
+        foreach ($schema as $key => $value) {
+            if (is_array($value)) {
+                $schema[$key] = $this->expandContinuationNumberBounds($value, $perRequestLimit, $totalLimit);
+            }
+        }
+
+        return $schema;
     }
 
     /**
@@ -234,6 +258,8 @@ class ContentContinuationComposer
         array $content,
         string $attributePrefix,
     ): array {
+        $continuation = $this->continuationType($definition);
+        $collection = $continuation->continuationCollectionField();
         $schema = $definition->outputSchema();
         $properties = $schema['properties'] ?? null;
 
@@ -246,6 +272,14 @@ class ContentContinuationComposer
         ];
 
         foreach ($definition->validationRules() as $attribute => $attributeRules) {
+            if ($attribute === $collection) {
+                $attributeRules = array_values(array_filter(
+                    $attributeRules,
+                    static fn (mixed $rule): bool => ! (is_string($rule) && str_starts_with($rule, 'max:')),
+                ));
+                $attributeRules[] = 'max:'.$continuation->maximumContinuationEntries();
+            }
+
             $rules[$attributePrefix.'.'.$attribute] = $attributeRules;
         }
 

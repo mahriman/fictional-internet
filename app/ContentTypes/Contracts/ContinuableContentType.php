@@ -8,5 +8,9 @@ interface ContinuableContentType
 
     public function continuationNumberField(): string;
 
+    public function maximumContinuationEntries(): int;
+
+    public function maximumContinuationEntriesPerRequest(): int;
+
     public function continuationInstructions(): string;
 }

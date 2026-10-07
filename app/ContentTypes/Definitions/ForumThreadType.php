@@ -12,6 +12,8 @@ class ForumThreadType implements ContentTypeDefinition, ContinuableContentType, 
 {
     public const MAX_POSTS = 20;
 
+    public const MAX_TOTAL_POSTS = 200;
+
     public const TIMESTAMP_FORMAT = DiscussionSemantics::TIMESTAMP_FORMAT;
 
     public function key(): string
@@ -32,6 +34,16 @@ class ForumThreadType implements ContentTypeDefinition, ContinuableContentType, 
     public function continuationNumberField(): string
     {
         return 'post_number';
+    }
+
+    public function maximumContinuationEntries(): int
+    {
+        return self::MAX_TOTAL_POSTS;
+    }
+
+    public function maximumContinuationEntriesPerRequest(): int
+    {
+        return self::MAX_POSTS;
     }
 
     public function continuationInstructions(): string
@@ -127,13 +139,13 @@ INSTRUCTIONS;
             'started_at' => ['required', 'date_format:'.self::TIMESTAMP_FORMAT],
             'posts' => ['required', 'array', 'list', 'min:1', 'max:'.self::MAX_POSTS],
             'posts.*' => ['required', 'array:post_number,author,posted_at,body,reply_to_post_number,quote'],
-            'posts.*.post_number' => ['required', 'integer', 'min:1', 'max:'.self::MAX_POSTS],
+            'posts.*.post_number' => ['required', 'integer', 'min:1', 'max:'.self::MAX_TOTAL_POSTS],
             'posts.*.author' => ['required', 'string', 'max:80'],
             'posts.*.posted_at' => ['required', 'date_format:'.self::TIMESTAMP_FORMAT],
             'posts.*.body' => ['required', 'string', 'max:5000'],
-            'posts.*.reply_to_post_number' => ['present', 'nullable', 'integer', 'min:1', 'max:'.self::MAX_POSTS],
+            'posts.*.reply_to_post_number' => ['present', 'nullable', 'integer', 'min:1', 'max:'.self::MAX_TOTAL_POSTS],
             'posts.*.quote' => ['present', 'nullable', 'array:post_number,text'],
-            'posts.*.quote.post_number' => ['nullable', 'integer', 'min:1', 'max:'.self::MAX_POSTS],
+            'posts.*.quote.post_number' => ['nullable', 'integer', 'min:1', 'max:'.self::MAX_TOTAL_POSTS],
             'posts.*.quote.text' => ['nullable', 'string', 'max:5000'],
         ];
     }
@@ -187,14 +199,14 @@ INSTRUCTIONS;
             'thread_title' => ['required', 'string', 'max:255'],
             'category' => ['required', 'string', 'max:120'],
             'started_at' => ['required', 'date_format:'.self::TIMESTAMP_FORMAT],
-            'posts' => ['required', 'array', 'list', 'size:'.$postCount, 'min:1', 'max:'.self::MAX_POSTS],
+            'posts' => ['required', 'array', 'list', 'size:'.$postCount, 'min:1', 'max:'.self::MAX_TOTAL_POSTS],
             'posts.*' => ['required', 'array:author,posted_at,body,reply_to_post_number,quote'],
             'posts.*.author' => ['required', 'string', 'max:80'],
             'posts.*.posted_at' => ['required', 'date_format:'.self::TIMESTAMP_FORMAT],
             'posts.*.body' => ['required', 'string', 'max:5000'],
-            'posts.*.reply_to_post_number' => ['nullable', 'integer', 'min:1', 'max:'.self::MAX_POSTS],
+            'posts.*.reply_to_post_number' => ['nullable', 'integer', 'min:1', 'max:'.self::MAX_TOTAL_POSTS],
             'posts.*.quote' => ['nullable', 'array:post_number,text'],
-            'posts.*.quote.post_number' => ['nullable', 'integer', 'min:1', 'max:'.self::MAX_POSTS],
+            'posts.*.quote.post_number' => ['nullable', 'integer', 'min:1', 'max:'.self::MAX_TOTAL_POSTS],
             'posts.*.quote.text' => ['nullable', 'string', 'max:5000'],
         ];
     }

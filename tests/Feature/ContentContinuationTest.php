@@ -86,6 +86,30 @@ function continuationProposal(array ...$entries): array
     return ['entries' => $entries];
 }
 
+/** @return array<string, mixed> */
+function continuationSourceAtEntryCount(string $contentType, int $entryCount): array
+{
+    $source = continuationSourceContent($contentType);
+    $collection = continuationCollection($contentType);
+    $numberField = continuationNumberField($contentType);
+    $replyField = continuationReplyField($contentType);
+    $authorField = $contentType === 'forum_thread' ? 'author' : 'handle';
+    $source[$collection] = [];
+
+    for ($number = 1; $number <= $entryCount; $number++) {
+        $source[$collection][] = [
+            $numberField => $number,
+            $authorField => 'Writer '.$number,
+            'posted_at' => '2025-06-15T10:00:00+00:00',
+            'body' => 'Existing entry '.$number,
+            $replyField => $number === 1 ? null : 1,
+            'quote' => null,
+        ];
+    }
+
+    return $source;
+}
+
 function persistContinuation(GeneratedContent $content, GeneratedContentVersion $source, array $composed): GeneratedContentVersion
 {
     return app(AppendGeneratedContentVersion::class)->handle(
@@ -109,10 +133,45 @@ test('continuation proposal schema contains only strictly shaped new entries', f
     expect($schema['additionalProperties'])->toBeFalse()
         ->and($schema['required'])->toBe(['entries'])
         ->and($schema['properties']['entries']['minItems'])->toBe(1)
-        ->and($schema['properties']['entries']['maxItems'])->toBe($definition->outputSchema()['properties'][$collection]['maxItems'] - 2)
+        ->and($schema['properties']['entries']['maxItems'])->toBe($definition->maximumContinuationEntriesPerRequest())
         ->and($itemSchema['additionalProperties'])->toBeFalse()
         ->and($itemSchema['properties'])->not->toHaveKey($numberField)
         ->and($itemSchema['required'])->not->toContain($numberField);
+})->with(['forum_thread', 'schrecknet_thread']);
+
+test('twenty-entry discussions remain continuable and total capacity is separate from one-request capacity', function (string $contentType) {
+    $definition = app(ContentTypeRegistry::class)->get($contentType);
+    $source = continuationSourceAtEntryCount($contentType, 20);
+    $collection = continuationCollection($contentType);
+    $composer = app(ContentContinuationComposer::class);
+    $schema = $composer->proposalSchema($definition, $source);
+
+    expect($composer->remainingCapacity($definition, $source))->toBe(180)
+        ->and($schema['properties']['entries']['maxItems'])->toBe($definition->maximumContinuationEntriesPerRequest())
+        ->and($schema['properties']['entries']['items']['properties'][continuationReplyField($contentType)]['anyOf'][0]['maximum'])
+        ->toBe(200);
+
+    Http::assertNothingSent();
+})->with(['forum_thread', 'schrecknet_thread']);
+
+test('continuation capacity permits the last entry at the supported boundary and rejects the boundary and beyond', function (string $contentType) {
+    $definition = app(ContentTypeRegistry::class)->get($contentType);
+    $composer = app(ContentContinuationComposer::class);
+    $collection = continuationCollection($contentType);
+    $belowBoundary = continuationSourceAtEntryCount($contentType, 199);
+    $atBoundary = continuationSourceAtEntryCount($contentType, 200);
+    $beyondBoundary = continuationSourceAtEntryCount($contentType, 201);
+
+    expect($composer->remainingCapacity($definition, $belowBoundary))->toBe(1)
+        ->and($composer->proposalSchema($definition, $belowBoundary)['properties']['entries']['maxItems'])->toBe(1)
+        ->and($composer->remainingCapacity($definition, $atBoundary))->toBe(0);
+
+    expect(fn () => $composer->proposalSchema($definition, $atBoundary))
+        ->toThrow(ValidationException::class)
+        ->and(fn () => $composer->remainingCapacity($definition, $beyondBoundary))
+        ->toThrow(ValidationException::class);
+
+    Http::assertNothingSent();
 })->with(['forum_thread', 'schrecknet_thread']);
 
 test('continuation appends numbered entries and reuses immutable version lineage for both types', function (string $contentType) {
@@ -266,7 +325,7 @@ test('a full source is rejected rather than truncating any source entries', func
     $collection = continuationCollection($contentType);
     $numberField = continuationNumberField($contentType);
     $replyField = continuationReplyField($contentType);
-    $maximum = $definition->outputSchema()['properties'][$collection]['maxItems'];
+    $maximum = $definition->maximumContinuationEntries();
     $source[$collection] = [];
 
     for ($entryNumber = 1; $entryNumber <= $maximum; $entryNumber++) {

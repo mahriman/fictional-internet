@@ -53,6 +53,30 @@ function continuationGenerationSource(string $type): array
     ];
 }
 
+/** @return array<string, mixed> */
+function continuationGenerationSourceWithEntries(string $type, int $entryCount): array
+{
+    $source = continuationGenerationSource($type);
+    $collection = $type === 'forum_thread' ? 'posts' : 'messages';
+    $numberField = $type === 'forum_thread' ? 'post_number' : 'message_number';
+    $replyField = $type === 'forum_thread' ? 'reply_to_post_number' : 'reply_to_message_number';
+    $authorField = $type === 'forum_thread' ? 'author' : 'handle';
+    $source[$collection] = [];
+
+    for ($number = 1; $number <= $entryCount; $number++) {
+        $source[$collection][] = [
+            $numberField => $number,
+            $authorField => 'Writer '.$number,
+            'posted_at' => '2026-10-05T10:00:00+00:00',
+            'body' => 'Existing entry '.$number,
+            $replyField => $number === 1 ? null : 1,
+            'quote' => null,
+        ];
+    }
+
+    return $source;
+}
+
 function continuationGenerationProposal(string $type, bool $withSecondEntry = false): array
 {
     if ($type === 'forum_thread') {
@@ -228,6 +252,96 @@ test('continuation generates only requested additions and persists immutable pro
     });
 })->with(['forum_thread', 'schrecknet_thread']);
 
+test('twenty-entry Forum and SchreckNet versions can be continued repeatedly above twenty entries', function (string $type) {
+    [$project, $content, $source] = createContinuationContent(
+        $type,
+        continuationGenerationSourceWithEntries($type, 20),
+    );
+    $originalContent = $source->content;
+    $entryField = $type === 'forum_thread' ? 'posts' : 'messages';
+    $numberField = $type === 'forum_thread' ? 'post_number' : 'message_number';
+    $replyField = $type === 'forum_thread' ? 'reply_to_post_number' : 'reply_to_message_number';
+    $entry = $type === 'forum_thread'
+        ? [
+            'author' => 'Ash',
+            'posted_at' => '2026-10-05T10:01:00+00:00',
+            'body' => 'I checked the west entrance.',
+            'reply_to_post_number' => 20,
+            'quote' => ['post_number' => 20, 'text' => 'Existing entry 20'],
+        ]
+        : [
+            'handle' => 'Ash',
+            'posted_at' => '2026-10-05T10:01:00+00:00',
+            'body' => 'I checked the west entrance.',
+            'reply_to_message_number' => 20,
+            'quote' => ['message_number' => 20, 'text' => 'Existing entry 20'],
+        ];
+    $proposal = ['entries' => [$entry]];
+    Http::fakeSequence()
+        ->push(continuationProviderResponse($proposal, 'resp_long_continuation_1'))
+        ->push(continuationProviderResponse($proposal, 'resp_long_continuation_2'));
+
+    $firstResult = continueContent($content, $source, issueContinuationAttempt($content, $source));
+    $firstVersion = $firstResult->version->fresh();
+    $secondResult = continueContent($content, $firstVersion, issueContinuationAttempt($content, $firstVersion));
+    $secondVersion = $secondResult->version->fresh();
+
+    expect($firstVersion->content[$entryField])->toHaveCount(21)
+        ->and($firstVersion->content[$entryField][20][$numberField])->toBe(21)
+        ->and($firstVersion->content[$entryField][20][$replyField])->toBe(20)
+        ->and($firstVersion->content[$entryField][20]['quote'][$numberField])->toBe(20)
+        ->and($secondVersion->content[$entryField])->toHaveCount(22)
+        ->and($secondVersion->content[$entryField][21][$numberField])->toBe(22)
+        ->and($secondVersion->based_on_version_id)->toBe($firstVersion->id)
+        ->and(canonicalizeJsonStructure($source->fresh()->content))->toBe(canonicalizeJsonStructure($originalContent))
+        ->and($content->versions()->orderBy('version_number')->pluck('version_number')->all())->toBe([1, 2, 3]);
+
+    Http::assertSentCount(2);
+})->with(['forum_thread', 'schrecknet_thread']);
+
+test('continuation can persist the final supported entry and refuses a further provider request', function (string $type) {
+    [$project, $content, $source] = createContinuationContent(
+        $type,
+        continuationGenerationSourceWithEntries($type, 199),
+    );
+    $collection = $type === 'forum_thread' ? 'posts' : 'messages';
+    $numberField = $type === 'forum_thread' ? 'post_number' : 'message_number';
+    $replyField = $type === 'forum_thread' ? 'reply_to_post_number' : 'reply_to_message_number';
+    $entry = $type === 'forum_thread'
+        ? [
+            'author' => 'Ash',
+            'posted_at' => '2026-10-05T10:01:00+00:00',
+            'body' => 'The final supported post.',
+            'reply_to_post_number' => 199,
+            'quote' => ['post_number' => 199, 'text' => 'Existing entry 199'],
+        ]
+        : [
+            'handle' => 'Ash',
+            'posted_at' => '2026-10-05T10:01:00+00:00',
+            'body' => 'The final supported message.',
+            'reply_to_message_number' => 199,
+            'quote' => ['message_number' => 199, 'text' => 'Existing entry 199'],
+        ];
+    Http::fake(['https://api.openai.com/v1/responses' => Http::response(
+        continuationProviderResponse(['entries' => [$entry]], 'resp_final_discussion_entry'),
+    )]);
+
+    $result = continueContent($content, $source, issueContinuationAttempt($content, $source));
+    $version = $result->version->fresh();
+
+    expect($version->content[$collection])->toHaveCount(200)
+        ->and($version->content[$collection][199][$numberField])->toBe(200)
+        ->and($version->content[$collection][199][$replyField])->toBe(199)
+        ->and($version->content[$collection][199]['quote'][$numberField])->toBe(199)
+        ->and($version->based_on_version_id)->toBe($source->id);
+
+    expect(fn () => continueContent($content, $version, issueContinuationAttempt($content, $version)))
+        ->toThrow(ValidationException::class);
+
+    Http::assertSentCount(1);
+    expect($content->versions()->count())->toBe(2);
+})->with(['forum_thread', 'schrecknet_thread']);
+
 test('unrecoverable new quote is omitted while its valid reply remains and source quotes are untouched', function () {
     $type = 'forum_thread';
     $sourceValue = continuationGenerationSource($type);
@@ -293,7 +407,7 @@ test('invalid requested count, full source, or cross-bound content token fail be
     $sourceContent = continuationGenerationSource('forum_thread');
     if ($case === 'full source') {
         $sourceContent['posts'] = [];
-        for ($number = 1; $number <= 20; $number++) {
+        for ($number = 1; $number <= 200; $number++) {
             $sourceContent['posts'][] = [
                 'post_number' => $number,
                 'author' => 'Mica',
@@ -318,7 +432,7 @@ test('invalid requested count, full source, or cross-bound content token fail be
 
         expect(fn () => continueContent($otherContent, $otherSource, $token))->toThrow(GenerationAttemptException::class);
     } else {
-        $count = $case === 'zero' ? 0 : ($case === 'negative' ? -1 : 19);
+        $count = $case === 'zero' ? 0 : ($case === 'negative' ? -1 : 21);
         expect(fn () => continueContent($content, $source, $token, ['count' => $count]))
             ->toThrow(ValidationException::class);
     }
@@ -326,7 +440,7 @@ test('invalid requested count, full source, or cross-bound content token fail be
     expect(GenerationAttempt::query()->sole()->status)->toBe(GenerationAttemptStatus::Issued)
         ->and($content->versions()->count())->toBe(1);
     Http::assertNothingSent();
-})->with(['zero', 'negative', 'full source', 'excessive remaining count', 'cross content']);
+})->with(['zero', 'negative', 'full source', 'excessive per-request count', 'cross content']);
 
 test('continuation reuses the five-reference limit and rejects duplicate selected versions before claiming', function (string $case) {
     [$project, $content, $source] = createContinuationContent('forum_thread');
